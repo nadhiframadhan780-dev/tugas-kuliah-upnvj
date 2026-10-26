@@ -1,0 +1,6 @@
+{
+  "name": "Planner Akuntansi UPNVJ",
+  "description": "Aplikasi manajemen jadwal kuliah dan list tugas untuk Mahasiswa S1 Akuntansi UPNVJ dengan ekstraksi dokumen otomatis dan hitung mundur realtime.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

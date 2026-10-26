@@ -1,0 +1,49 @@
+{
+  "name": "Planner Akuntansi UPNVJ",
+  "short_name": "Planner UPNVJ",
+  "description": "Jadwal Kuliah & List Tugas Mahasiswa S1 Akuntansi UPNVJ",
+  "lang": "id",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#0D9488",
+  "background_color": "#F0FDFA",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/assets/aistudio/Jadwal_dan_Daftar_Tugas_Akuntansi_68173d24.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/aistudio/Jadwal_dan_Daftar_Tugas_Akuntansi_68173d24.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/aistudio/Jadwal_dan_Daftar_Tugas_Akuntansi_68173d24.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Tambah Tugas",
+      "short_name": "Tambah",
+      "description": "Tambah tugas kuliah baru",
+      "url": "/?action=new-task",
+      "icons": [{ "src": "/assets/aistudio/Jadwal_dan_Daftar_Tugas_Akuntansi_68173d24.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Jadwal Hari Ini",
+      "short_name": "Jadwal",
+      "description": "Lihat jadwal kuliah hari ini",
+      "url": "/?view=schedule",
+      "icons": [{ "src": "/assets/aistudio/Jadwal_dan_Daftar_Tugas_Akuntansi_68173d24.png", "sizes": "192x192" }]
+    }
+  ]
+}

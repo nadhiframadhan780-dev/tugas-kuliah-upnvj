@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+    <title>Planner Akuntansi UPNVJ - Jadwal & Tugas Mahasiswa S1 Akuntansi</title>
+    <meta name="description" content="Aplikasi manajemen jadwal kuliah dan list tugas untuk Mahasiswa S1 Akuntansi UPNVJ dengan ekstraksi dokumen otomatis dan hitung mundur realtime." />
+    
+    <!-- OpenGraph / Social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Planner Akuntansi UPNVJ" />
+    <meta property="og:description" content="Manajemen Jadwal Kuliah & List Tugas Mahasiswa S1 Akuntansi UPNVJ." />
+    <meta property="og:image" content="/assets/aistudio/Jadwal_dan_Daftar_Tugas_Akuntansi_68173d24.png" />
+    
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Planner Akuntansi UPNVJ" />
+    <meta name="twitter:description" content="Manajemen Jadwal Kuliah & List Tugas Mahasiswa S1 Akuntansi UPNVJ." />
+    <meta name="twitter:image" content="/assets/aistudio/Jadwal_dan_Daftar_Tugas_Akuntansi_68173d24.png" />
+
+    <!-- PWA & Favicon -->
+    <meta name="theme-color" content="#0D9488" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Planner Akuntansi" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/aistudio/Jadwal_dan_Daftar_Tugas_Akuntansi_68173d24.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/aistudio/Jadwal_dan_Daftar_Tugas_Akuntansi_68173d24.png" />
+    <link rel="apple-touch-icon" href="/assets/aistudio/Jadwal_dan_Daftar_Tugas_Akuntansi_68173d24.png" />
+
+    <!-- Typography: Plus Jakarta Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  </head>
+  <body class="bg-[#F0FDFA] text-slate-800 font-sans antialiased selection:bg-teal-500 selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Register service worker if supported
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(err => {
+            console.log('SW registration note:', err?.message || err);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
