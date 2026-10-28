@@ -120,6 +120,74 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     }
   };
 
+  // Lompat langsung ke tanggal dan bulan target (tidak stuck!)
+  const jumpToDate = (targetDateStr: string, targetSemester?: 'ganjil' | 'genap') => {
+    const parts = targetDateStr.split('-');
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1; // 0-indexed
+    const d = parseInt(parts[2], 10);
+
+    setCurrentDate(new Date(y, m, d));
+    setSelectedDateStr(targetDateStr);
+
+    if (targetSemester) {
+      setSemesterView(targetSemester);
+    } else {
+      setSemesterView(y === 2026 || (y === 2027 && m === 0) ? 'ganjil' : 'genap');
+    }
+  };
+
+  // Pilih filter dan langsung otomatis tampilkan bulan & tanggal acara terkait!
+  const handleSelectFilter = (filterId: CalendarFilter) => {
+    setActiveFilter(filterId);
+
+    if (filterId === 'minggu_tenang') {
+      // Langsung lompat ke bulan & tanggal Minggu Tenang!
+      if (semesterView === 'genap') {
+        jumpToDate('2027-06-07', 'genap');
+      } else {
+        jumpToDate('2026-11-30', 'ganjil');
+      }
+    } else if (filterId === 'ujian') {
+      // Langsung lompat ke pekan UTS atau UAS
+      if (semesterView === 'genap') {
+        jumpToDate('2027-04-12', 'genap');
+      } else {
+        jumpToDate('2026-10-05', 'ganjil');
+      }
+    } else if (filterId === 'krs') {
+      // Langsung lompat ke periode KRS Online
+      if (semesterView === 'genap') {
+        jumpToDate('2027-01-25', 'genap');
+      } else {
+        jumpToDate('2026-08-03', 'ganjil');
+      }
+    } else if (filterId === 'libur') {
+      if (semesterView === 'genap') {
+        jumpToDate('2027-03-10', 'genap'); // Idul Fitri Genap
+      } else {
+        jumpToDate('2026-08-17', 'ganjil'); // HUT RI Ganjil
+      }
+    } else if (filterId === 'tugas') {
+      const activeTasks = tasks
+        .filter((t) => t.deadlineAt && !t.deletedAt && t.status !== 'completed')
+        .sort((a, b) => a.deadlineAt - b.deadlineAt);
+      if (activeTasks.length > 0) {
+        const dStr = new Date(activeTasks[0].deadlineAt).toISOString().split('T')[0];
+        jumpToDate(dStr);
+      }
+    } else if (filterId === 'kuliah_saya') {
+      const todayStr = new Date(nowUtc).toISOString().split('T')[0];
+      jumpToDate(todayStr);
+    } else if (filterId === 'upnvj_resmi') {
+      if (semesterView === 'genap') {
+        jumpToDate('2027-02-15', 'genap');
+      } else {
+        jumpToDate('2026-08-18', 'ganjil');
+      }
+    }
+  };
+
   // Build calendar grid days
   const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 is Sunday
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -445,34 +513,244 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         </div>
       )}
 
-      {/* 3. Filter Chips: Kategori Agenda */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-        <span className="text-slate-500 font-medium shrink-0 flex items-center gap-1">
-          <Filter className="w-3.5 h-3.5" /> Saring:
-        </span>
-        {[
-          { id: 'semua', label: 'Semua Agenda' },
-          { id: 'upnvj_resmi', label: 'Kalender UPNVJ Resmi' },
-          { id: 'ujian', label: 'UTS & UAS' },
-          { id: 'minggu_tenang', label: 'Minggu Tenang' },
-          { id: 'krs', label: 'KRS & Registrasi' },
-          { id: 'kuliah_saya', label: 'Jadwal Kuliah Saya' },
-          { id: 'tugas', label: 'Tenggat Tugas' },
-          { id: 'libur', label: 'Hari Libur Nasional' },
-        ].map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => setActiveFilter(f.id as CalendarFilter)}
-            className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
-              activeFilter === f.id
-                ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-xs'
-                : 'bg-white hover:bg-teal-50 text-slate-700 border border-teal-100'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
+      {/* 3. Filter Chips: Kategori Agenda & Lompat Otomatis ke Tanggal Acara */}
+      <div className="space-y-2.5">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+          <span className="text-slate-500 font-medium shrink-0 flex items-center gap-1">
+            <Filter className="w-3.5 h-3.5" /> Saring:
+          </span>
+          {[
+            { id: 'semua', label: 'Semua Agenda' },
+            { id: 'minggu_tenang', label: 'Minggu Tenang' },
+            { id: 'ujian', label: 'UTS & UAS' },
+            { id: 'krs', label: 'KRS & Registrasi' },
+            { id: 'upnvj_resmi', label: 'Kalender UPNVJ Resmi' },
+            { id: 'kuliah_saya', label: 'Jadwal Kuliah Saya' },
+            { id: 'tugas', label: 'Tenggat Tugas' },
+            { id: 'libur', label: 'Hari Libur Nasional' },
+          ].map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => handleSelectFilter(f.id as CalendarFilter)}
+              className={`px-3.5 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer shadow-2xs ${
+                activeFilter === f.id
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-sm ring-2 ring-teal-400/30'
+                  : 'bg-white hover:bg-teal-50 text-slate-700 border border-teal-100'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Quick Jump Bar for Minggu Tenang */}
+        {activeFilter === 'minggu_tenang' && (
+          <div className="p-3 rounded-2xl bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-300 flex items-center justify-between flex-wrap gap-2.5 shadow-xs animate-in fade-in duration-200">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="px-2 py-0.5 rounded-md bg-amber-200 text-amber-900 font-black uppercase text-[10px]">
+                Minggu Tenang
+              </span>
+              <span className="text-amber-950 font-bold">
+                Bulan & tanggal otomatis ditampilkan:
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => jumpToDate('2026-11-30', 'ganjil')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  selectedDateStr >= '2026-11-30' && selectedDateStr <= '2026-12-04'
+                    ? 'bg-amber-600 text-white shadow-xs ring-2 ring-amber-400'
+                    : 'bg-white hover:bg-amber-100 text-amber-900 border border-amber-300'
+                }`}
+              >
+                <span>📅 Semester Ganjil: 30 Nov - 4 Des 2026</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => jumpToDate('2027-06-07', 'genap')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  selectedDateStr >= '2027-06-07' && selectedDateStr <= '2027-06-11'
+                    ? 'bg-amber-600 text-white shadow-xs ring-2 ring-amber-400'
+                    : 'bg-white hover:bg-amber-100 text-amber-900 border border-amber-300'
+                }`}
+              >
+                <span>📅 Semester Genap: 7 - 11 Juni 2027</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Quick Jump Bar for Ujian (UTS & UAS) */}
+        {activeFilter === 'ujian' && (
+          <div className="p-3 rounded-2xl bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-300 flex items-center justify-between flex-wrap gap-2.5 shadow-xs animate-in fade-in duration-200">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="px-2 py-0.5 rounded-md bg-orange-200 text-orange-900 font-black uppercase text-[10px]">
+                Pekan Ujian
+              </span>
+              <span className="text-orange-950 font-bold">
+                Pilih pekan ujian untuk langsung menuju tanggal & ruang ujian:
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => jumpToDate('2026-10-05', 'ganjil')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedDateStr >= '2026-10-05' && selectedDateStr <= '2026-10-09'
+                    ? 'bg-amber-600 text-white shadow-xs ring-2 ring-amber-400'
+                    : 'bg-white hover:bg-amber-100 text-amber-900 border border-amber-300'
+                }`}
+              >
+                UTS Ganjil (5 - 9 Okt 2026)
+              </button>
+              <button
+                type="button"
+                onClick={() => jumpToDate('2026-12-07', 'ganjil')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedDateStr >= '2026-12-07' && selectedDateStr <= '2026-12-18'
+                    ? 'bg-orange-600 text-white shadow-xs ring-2 ring-orange-400'
+                    : 'bg-white hover:bg-orange-100 text-orange-900 border border-orange-300'
+                }`}
+              >
+                UAS Ganjil (7 - 18 Des 2026)
+              </button>
+              <button
+                type="button"
+                onClick={() => jumpToDate('2027-04-12', 'genap')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedDateStr >= '2027-04-12' && selectedDateStr <= '2027-04-16'
+                    ? 'bg-amber-600 text-white shadow-xs ring-2 ring-amber-400'
+                    : 'bg-white hover:bg-amber-100 text-amber-900 border border-amber-300'
+                }`}
+              >
+                UTS Genap (12 - 16 Apr 2027)
+              </button>
+              <button
+                type="button"
+                onClick={() => jumpToDate('2027-06-14', 'genap')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedDateStr >= '2027-06-14' && selectedDateStr <= '2027-06-25'
+                    ? 'bg-orange-600 text-white shadow-xs ring-2 ring-orange-400'
+                    : 'bg-white hover:bg-orange-100 text-orange-900 border border-orange-300'
+                }`}
+              >
+                UAS Genap (14 - 25 Jun 2027)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Quick Jump Bar for KRS & Registrasi */}
+        {activeFilter === 'krs' && (
+          <div className="p-3 rounded-2xl bg-gradient-to-r from-sky-50 to-teal-50 border-2 border-sky-300 flex items-center justify-between flex-wrap gap-2.5 shadow-xs animate-in fade-in duration-200">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="px-2 py-0.5 rounded-md bg-sky-200 text-sky-900 font-black uppercase text-[10px]">
+                KRS & UKT
+              </span>
+              <span className="text-sky-950 font-bold">
+                Pilih periode registrasi akademik:
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => jumpToDate('2026-08-02', 'ganjil')}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedDateStr === '2026-08-02'
+                    ? 'bg-sky-600 text-white shadow-xs ring-2 ring-sky-400'
+                    : 'bg-white hover:bg-sky-100 text-sky-900 border border-sky-300'
+                }`}
+              >
+                UKT Ganjil (2 Ags 2026)
+              </button>
+              <button
+                type="button"
+                onClick={() => jumpToDate('2026-08-03', 'ganjil')}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedDateStr >= '2026-08-03' && selectedDateStr <= '2026-08-14'
+                    ? 'bg-sky-600 text-white shadow-xs ring-2 ring-sky-400'
+                    : 'bg-white hover:bg-sky-100 text-sky-900 border border-sky-300'
+                }`}
+              >
+                KRS Online Ganjil (3 - 14 Ags 2026)
+              </button>
+              <button
+                type="button"
+                onClick={() => jumpToDate('2026-08-24', 'ganjil')}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedDateStr >= '2026-08-24' && selectedDateStr <= '2026-08-28'
+                    ? 'bg-sky-600 text-white shadow-xs ring-2 ring-sky-400'
+                    : 'bg-white hover:bg-sky-100 text-sky-900 border border-sky-300'
+                }`}
+              >
+                P-KRS Ganjil (24 - 28 Ags 2026)
+              </button>
+              <button
+                type="button"
+                onClick={() => jumpToDate('2027-01-24', 'genap')}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedDateStr === '2027-01-24'
+                    ? 'bg-sky-600 text-white shadow-xs ring-2 ring-sky-400'
+                    : 'bg-white hover:bg-sky-100 text-sky-900 border border-sky-300'
+                }`}
+              >
+                UKT Genap (24 Jan 2027)
+              </button>
+              <button
+                type="button"
+                onClick={() => jumpToDate('2027-01-25', 'genap')}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedDateStr >= '2027-01-25' && selectedDateStr <= '2027-02-05'
+                    ? 'bg-sky-600 text-white shadow-xs ring-2 ring-sky-400'
+                    : 'bg-white hover:bg-sky-100 text-sky-900 border border-sky-300'
+                }`}
+              >
+                KRS Online Genap (25 Jan - 5 Feb 2027)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Quick Jump Bar for Hari Libur */}
+        {activeFilter === 'libur' && (
+          <div className="p-3 rounded-2xl bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-rose-300 flex items-center justify-between flex-wrap gap-2.5 shadow-xs animate-in fade-in duration-200">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="px-2 py-0.5 rounded-md bg-rose-200 text-rose-900 font-black uppercase text-[10px]">
+                Hari Libur Nasional
+              </span>
+              <span className="text-rose-950 font-bold">
+                Pilih hari libur nasional untuk melihat jadwal:
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                { date: '2026-08-17', label: 'HUT RI (17 Ags)', sem: 'ganjil' },
+                { date: '2026-09-25', label: 'Maulid Nabi (25 Sep)', sem: 'ganjil' },
+                { date: '2026-12-25', label: 'Natal (25 Des)', sem: 'ganjil' },
+                { date: '2027-01-01', label: 'Tahun Baru 2027 (1 Jan)', sem: 'ganjil' },
+                { date: '2027-02-06', label: 'Imlek (6 Feb)', sem: 'genap' },
+                { date: '2027-03-09', label: 'Nyepi (9 Mar)', sem: 'genap' },
+                { date: '2027-03-10', label: 'Idul Fitri (10 Mar)', sem: 'genap' },
+                { date: '2027-05-01', label: 'Hari Buruh (1 Mei)', sem: 'genap' },
+              ].map((h, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => jumpToDate(h.date, h.sem as any)}
+                  className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    selectedDateStr === h.date
+                      ? 'bg-rose-600 text-white shadow-xs ring-2 ring-rose-400'
+                      : 'bg-white hover:bg-rose-100 text-rose-900 border border-rose-300'
+                  }`}
+                >
+                  {h.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 4. Main Calendar Layout: Grid (2 Cols) + Detail Agenda Panel (1 Col) */}
@@ -564,7 +842,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               const isHoliday = upnvjEventsOnDay.some((e) => e.type === 'libur');
 
               let rangeBg = 'bg-white';
-              if (isUtsRange) rangeBg = 'bg-amber-50/80 border-amber-200';
+              if (activeFilter === 'minggu_tenang' && isMingguTenang) {
+                rangeBg = 'bg-yellow-100/90 border-2 border-yellow-400 shadow-xs ring-1 ring-yellow-400/40';
+              } else if (isUtsRange) rangeBg = 'bg-amber-50/80 border-amber-200';
               else if (isUasRange) rangeBg = 'bg-orange-50/80 border-orange-200';
               else if (isMingguTenang) rangeBg = 'bg-yellow-50/80 border-yellow-200';
               else if (isHoliday) rangeBg = 'bg-rose-50/60 border-rose-200';
@@ -576,7 +856,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   onClick={() => setSelectedDateStr(cell.dateStr)}
                   className={`min-h-[82px] sm:min-h-[92px] p-1.5 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
                     isSelected
-                      ? 'border-2 border-teal-600 bg-teal-50 ring-2 ring-teal-400/40 shadow-sm scale-101 z-10'
+                      ? activeFilter === 'minggu_tenang'
+                        ? 'border-2 border-amber-600 bg-amber-50 ring-4 ring-amber-300 shadow-md scale-102 z-10'
+                        : 'border-2 border-teal-600 bg-teal-50 ring-2 ring-teal-400/40 shadow-sm scale-101 z-10'
                       : cell.isCurrentMonth
                       ? `${rangeBg} border-teal-100/80 hover:bg-teal-50/50`
                       : 'border-transparent text-slate-300 bg-slate-50/30'
