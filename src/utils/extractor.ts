@@ -330,8 +330,25 @@ export function detectCourseAndType(rawText: string): { course?: string; type: T
     type = 'Presentasi';
   }
 
-  // Deteksi Mata Kuliah Akuntansi
+  // Deteksi Mata Kuliah Akuntansi & UPNVJ Semester 1
   const courseKeywords: Record<string, string> = {
+    'praktikum pengantar akuntansi': 'Praktikum Pengantar Akuntansi',
+    'pengantar akuntansi': 'Pengantar Akuntansi',
+    'pengantar ilmu ekonomi': 'Pengantar Ilmu Ekonomi',
+    'ilmu ekonomi': 'Pengantar Ilmu Ekonomi',
+    'ekonomi mikro': 'Pengantar Ilmu Ekonomi',
+    'ekonomi makro': 'Pengantar Ilmu Ekonomi',
+    'bela negara': 'Pendidikan Bela Negara',
+    'pendidikan bela negara': 'Pendidikan Bela Negara',
+    'bahasa inggris ekonomi': 'Bahasa Inggris Ekonomi dan Bisnis',
+    'bahasa inggris': 'Bahasa Inggris Ekonomi dan Bisnis',
+    'english for business': 'Bahasa Inggris Ekonomi dan Bisnis',
+    'pengantar manajemen': 'Pengantar Manajemen dan Bisnis',
+    'manajemen dan bisnis': 'Pengantar Manajemen dan Bisnis',
+    'kewarganegaraan': 'Kewarganegaraan',
+    'pkn': 'Kewarganegaraan',
+    'agama': 'Agama',
+    'pendidikan agama': 'Agama',
     'akuntansi keuangan': 'Akuntansi Keuangan',
     'akuntansi biaya': 'Akuntansi Biaya',
     'akuntansi manajemen': 'Akuntansi Manajemen',
@@ -344,7 +361,6 @@ export function detectCourseAndType(rawText: string): { course?: string; type: T
     'teori akuntansi': 'Teori Akuntansi',
     'akuntansi sektor publik': 'Akuntansi Sektor Publik',
     'analisis laporan keuangan': 'Analisis Laporan Keuangan',
-    'pengantar akuntansi': 'Pengantar Akuntansi',
     'etika bisnis': 'Etika Bisnis & Profesi Akuntan',
   };
 
@@ -473,9 +489,71 @@ async function loadScript(url: string, globalName: string): Promise<unknown> {
 }
 
 /**
- * Ekstraksi file PDF menggunakan pdfjs-dist
+ * Jalankan OCR pada gambar (File / Blob / HTMLCanvasElement / URL)
+ * Menggunakan Tesseract.js yang dimuat on-demand via CDN
  */
-async function parsePdfFile(file: File): Promise<{ text: string; isScanned: boolean }> {
+export async function runOcrOnImageOrCanvas(
+  imageSource: File | Blob | HTMLCanvasElement | string,
+  onProgress?: (percent: number, status: string) => void
+): Promise<string> {
+  onProgress?.(30, 'Memuat modul OCR Tesseract...');
+
+  const Tesseract = (await loadScript(
+    'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js',
+    'Tesseract'
+  )) as any;
+
+  if (!Tesseract || !Tesseract.createWorker) {
+    throw new Error('Modul OCR tidak berhasil dimuat dari CDN.');
+  }
+
+  onProgress?.(45, 'Inisialisasi engine OCR (Bahasa Indonesia & Inggris)...');
+
+  let worker: any = null;
+  try {
+    worker = await Tesseract.createWorker(['ind', 'eng'], 1, {
+      logger: (m: any) => {
+        if (m && m.status === 'recognizing text') {
+          const p = Math.round((m.progress || 0) * 100);
+          onProgress?.(50 + Math.floor(p * 0.4), `Membaca teks dari gambar (${p}%)...`);
+        }
+      },
+    });
+
+    onProgress?.(60, 'Mengekstrak karakter tulisan dari gambar...');
+    const result = await worker.recognize(imageSource);
+    await worker.terminate();
+    worker = null;
+
+    return result?.data?.text || '';
+  } catch (err) {
+    if (worker) {
+      try {
+        await worker.terminate();
+      } catch {}
+    }
+    // Fallback cepat: coba dengan kamus 'eng' jika 'ind' gagal diunduh
+    try {
+      onProgress?.(65, 'Mencoba kembali pengenalan teks dasar...');
+      const fallbackWorker = await Tesseract.createWorker('eng');
+      const ret = await fallbackWorker.recognize(imageSource);
+      await fallbackWorker.terminate();
+      return ret?.data?.text || '';
+    } catch (fbErr) {
+      console.warn('OCR error:', fbErr);
+      throw new Error('Gagal mengenali teks dari gambar.');
+    }
+  }
+}
+
+/**
+ * Ekstraksi file PDF menggunakan pdfjs-dist
+ * Mendukung teks digital maupun OCR canvas otomatis bila PDF berupa scan gambar
+ */
+async function parsePdfFile(
+  file: File,
+  onProgress?: (percent: number, status: string) => void
+): Promise<{ text: string; isScanned: boolean }> {
   // Load pdfjs from CDN
   const pdfjsLib = (await loadScript(
     'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
@@ -486,6 +564,10 @@ async function parsePdfFile(file: File): Promise<{ text: string; isScanned: bool
       promise: Promise<{
         numPages: number;
         getPage: (n: number) => Promise<{
+          getViewport: (params: { scale: number }) => { width: number; height: number };
+          render: (params: { canvasContext: CanvasRenderingContext2D | null; viewport: any }) => {
+            promise: Promise<void>;
+          };
           getTextContent: () => Promise<{ items: { str: string }[] }>;
         }>;
       }>;
@@ -511,8 +593,40 @@ async function parsePdfFile(file: File): Promise<{ text: string; isScanned: bool
     fullText += `${pageText}\n\n`;
   }
 
-  const isScanned = fullText.trim().length < 50;
-  return { text: fullText, isScanned };
+  // Jika teks digital sangat sedikit (< 50 karakter), PDF adalah hasil scan/foto halaman!
+  if (fullText.trim().length < 50 && typeof document !== 'undefined') {
+    onProgress?.(45, 'PDF terdeteksi scan foto/gambar, menjalankan OCR halaman...');
+    let ocrCombinedText = '';
+    const pagesToOcr = Math.min(pdf.numPages, 3); // OCR hingga 3 halaman pertama
+    for (let pNum = 1; pNum <= pagesToOcr; pNum++) {
+      onProgress?.(
+        45 + Math.floor((pNum / pagesToOcr) * 35),
+        `Menjalankan OCR halaman ${pNum} dari ${pagesToOcr}...`
+      );
+      try {
+        const page = await pdf.getPage(pNum);
+        const viewport = page.getViewport({ scale: 1.6 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          const pageOcr = await runOcrOnImageOrCanvas(canvas, onProgress);
+          ocrCombinedText += `\n[Halaman ${pNum}]\n` + pageOcr + '\n';
+        }
+      } catch (err) {
+        console.warn(`OCR gagal pada halaman PDF ${pNum}:`, err);
+      }
+    }
+
+    if (ocrCombinedText.trim().length > 0) {
+      return { text: ocrCombinedText, isScanned: true };
+    }
+    return { text: fullText, isScanned: true };
+  }
+
+  return { text: fullText, isScanned: false };
 }
 
 /**
@@ -635,6 +749,10 @@ export async function extractDocumentContent(
       const xlsxRes = await parseExcelFile(file);
       rawText = xlsxRes.text;
       excelDetails = xlsxRes.excelDetails;
+    } else if (['png', 'jpg', 'jpeg', 'webp', 'bmp'].includes(ext)) {
+      onProgress?.(35, 'Menjalankan OCR gambar soal tugas...');
+      rawText = await runOcrOnImageOrCanvas(file, onProgress);
+      isScannedPdf = false;
     } else if (['txt', 'md'].includes(ext)) {
       onProgress?.(40, 'Membaca berkas teks...');
       rawText = await file.text();

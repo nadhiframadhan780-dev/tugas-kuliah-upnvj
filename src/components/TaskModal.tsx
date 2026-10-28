@@ -40,6 +40,7 @@ interface TaskModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaveTask: (task: Task) => void;
+  onDeleteTask?: (taskId: string) => void;
   taskToEdit?: Task | null;
   courses: Course[];
   timezone: string;
@@ -70,6 +71,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   isOpen,
   onClose,
   onSaveTask,
+  onDeleteTask,
   taskToEdit,
   courses,
   timezone,
@@ -401,7 +403,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               type="file"
               ref={fileInputRef}
               onChange={handleFileInputChange}
-              accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.txt"
+              accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.txt,.png,.jpg,.jpeg,.webp"
               className="hidden"
             />
             <div className="flex flex-col items-center justify-center gap-1.5">
@@ -409,10 +411,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 <UploadCloud className="w-5 h-5" />
               </div>
               <p className="text-xs sm:text-sm font-semibold text-slate-800">
-                Tarik & letakkan file soal tugas di sini, atau <span className="text-teal-600 font-bold underline">pilih dari perangkat</span>
+                Tarik & letakkan file soal atau foto tugas di sini, atau <span className="text-teal-600 font-bold underline">pilih dari perangkat</span>
               </p>
               <p className="text-[11px] text-slate-500">
-                Mendukung PDF, Word (.docx), Excel (.xlsx, .csv), TXT (Maks 25 MB). Ekstraksi dilakukan otomatis di peramban Anda.
+                Mendukung <strong>Foto & Gambar (PNG, JPG, WebP)</strong>, <strong>PDF (Teks & Scan OCR)</strong>, Word (.docx), Excel (.xlsx, .csv), TXT. Judul, soal & ringkasan terisi otomatis!
               </p>
             </div>
 
@@ -1060,14 +1062,32 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           </div>
 
           {/* Footer Controls */}
-          <div className="pt-4 border-t border-teal-100 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
-            >
-              Batal
-            </button>
+          <div className="pt-4 border-t border-teal-100 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+
+              {taskToEdit && onDeleteTask && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm(`Yakin ingin menghapus tugas "${taskToEdit.title}" yang sudah tidak penting?`)) {
+                      onDeleteTask(taskToEdit.id);
+                      onClose();
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <span>Hapus Tugas</span>
+                </button>
+              )}
+            </div>
 
             <button
               type="submit"

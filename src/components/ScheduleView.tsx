@@ -2,7 +2,10 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * Jadwal Kuliah Mahasiswa S1 Akuntansi UPNVJ
- * Mendukung Grid Mingguan, Status Realtime Kelas Hari Ini, Deteksi Bentrok & CRUD
+ * Sesuai Dokumen Resmi SIAKAD FEB UPNVJ (Nadhif Aulia Ramadhan - NIM: 2610112058)
+ * Mendukung Grid Mingguan, Geser Hari (Drag-and-Drop / Tombol),
+ * Pilihan "Simpan Sementara" vs "Simpan untuk Hari-Hari Selanjutnya",
+ * Deteksi Bentrok Otomatis, dan Ekspor Kalender / Cetak.
  */
 
 import React, { useState } from 'react';
@@ -13,21 +16,29 @@ import {
   User,
   AlertTriangle,
   Download,
-  Upload,
   Printer,
   Trash2,
   Edit2,
   Calendar,
   X,
   Check,
+  ArrowRightLeft,
+  RotateCcw,
+  FileText,
+  Sparkles,
+  ExternalLink,
+  Layers,
+  CheckCircle2,
 } from 'lucide-react';
 import { Course } from '../types';
 import { getLocalDateAndTimeParts } from '../utils/time';
+import { getOfficialPdfCourses } from '../services/db';
 
 interface ScheduleViewProps {
   courses: Course[];
   onSaveCourse: (course: Course) => void;
   onDeleteCourse: (courseId: string) => void;
+  onSyncOfficialSchedule?: () => void;
   timezone: string;
   nowUtc: number;
 }
@@ -45,23 +56,25 @@ const COURSE_COLORS = [
   '#0D9488', // Teal
   '#059669', // Emerald
   '#0891B2', // Cyan
+  '#2563EB', // Blue
   '#D97706', // Amber
   '#7C3AED', // Violet
   '#DB2777', // Pink
-  '#2563EB', // Blue
 ];
 
 export const ScheduleView: React.FC<ScheduleViewProps> = ({
   courses,
   onSaveCourse,
   onDeleteCourse,
+  onSyncOfficialSchedule,
   timezone,
   nowUtc,
 }) => {
+  // CRUD Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [courseToEdit, setCourseToEdit] = useState<Course | null>(null);
 
-  // Form State
+  // Form State for CRUD
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [lecturer, setLecturer] = useState('');
@@ -70,64 +83,118 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('10:30');
   const [sks, setSks] = useState(3);
-  const [classCode, setClassCode] = useState('S1-AKT-3A');
-  const [semester, setSemester] = useState(3);
+  const [classCode, setClassCode] = useState('B');
+  const [semester, setSemester] = useState(1);
   const [color, setColor] = useState(COURSE_COLORS[0]);
+
+  // Reschedule (Geser Hari) Modal State
+  const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
+  const [courseToReschedule, setCourseToReschedule] = useState<Course | null>(null);
+  const [rescheduleTargetDay, setRescheduleTargetDay] = useState(1);
+  const [rescheduleStartTime, setRescheduleStartTime] = useState('08:00');
+  const [rescheduleEndTime, setRescheduleEndTime] = useState('10:30');
+  const [rescheduleNote, setRescheduleNote] = useState('Kuliah Pengganti Minggu Ini');
+
+  // Drag over day highlight state
+  const [dragOverDayIndex, setDragOverDayIndex] = useState<number | null>(null);
+
+  // Success Notification banner
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((prev) => (prev === msg ? null : prev));
+    }, 4000);
+  };
+
+  // Helper: get effective day & time considering temporary shift
+  const getEffectiveDay = (c: Course): number => {
+    return c.temporaryShift?.isShifted ? c.temporaryShift.shiftedDayOfWeek : c.dayOfWeek;
+  };
+
+  const getEffectiveStartTime = (c: Course): string => {
+    return c.temporaryShift?.isShifted ? c.temporaryShift.shiftedStartTime : c.startTime;
+  };
+
+  const getEffectiveEndTime = (c: Course): string => {
+    return c.temporaryShift?.isShifted ? c.temporaryShift.shiftedEndTime : c.endTime;
+  };
 
   // Current day index in selected timezone
   const parts = getLocalDateAndTimeParts(nowUtc, timezone);
   const nowDate = new Date(`${parts.dateStr}T00:00:00Z`);
   const todayDayIndex = nowDate.getUTCDay(); // 0 = Minggu, 1 = Senin ...
-  const currentMinutes = parseInt(parts.timeStr.split(':')[0], 10) * 60 + parseInt(parts.timeStr.split(':')[1], 10);
+  const currentMinutes =
+    parseInt(parts.timeStr.split(':')[0], 10) * 60 + parseInt(parts.timeStr.split(':')[1], 10);
 
   // Realtime Active / Next Class Status
   const todayCourses = courses
-    .filter((c) => c.dayOfWeek === todayDayIndex)
-    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+    .filter((c) => getEffectiveDay(c) === todayDayIndex)
+    .sort((a, b) => getEffectiveStartTime(a).localeCompare(getEffectiveStartTime(b)));
 
   let ongoingCourse: { course: Course; minutesLeft: number } | null = null;
   let nextCourse: { course: Course; minutesUntil: number } | null = null;
 
   for (const c of todayCourses) {
-    const startMins = parseInt(c.startTime.replace('.', ':').split(':')[0], 10) * 60 + parseInt(c.startTime.replace('.', ':').split(':')[1], 10);
-    const endMins = parseInt(c.endTime.replace('.', ':').split(':')[0], 10) * 60 + parseInt(c.endTime.replace('.', ':').split(':')[1], 10);
+    const sTime = getEffectiveStartTime(c);
+    const eTime = getEffectiveEndTime(c);
+    const startMins =
+      parseInt(sTime.replace('.', ':').split(':')[0], 10) * 60 +
+      parseInt(sTime.replace('.', ':').split(':')[1], 10);
+    const endMins =
+      parseInt(eTime.replace('.', ':').split(':')[0], 10) * 60 +
+      parseInt(eTime.replace('.', ':').split(':')[1], 10);
 
     if (currentMinutes >= startMins && currentMinutes <= endMins) {
       ongoingCourse = { course: c, minutesLeft: endMins - currentMinutes };
       break;
     } else if (currentMinutes < startMins) {
-      if (!nextCourse || startMins < parseInt(nextCourse.course.startTime.replace('.', ':').split(':')[0], 10) * 60) {
+      if (!nextCourse || startMins < parseInt(getEffectiveStartTime(nextCourse.course).replace('.', ':').split(':')[0], 10) * 60) {
         nextCourse = { course: c, minutesUntil: startMins - currentMinutes };
       }
     }
   }
 
   // Conflict Detection
-  const checkConflict = (day: number, start: string, end: string, excludeId?: string): Course | undefined => {
-    const s1 = parseInt(start.replace('.', ':').split(':')[0], 10) * 60 + parseInt(start.replace('.', ':').split(':')[1], 10);
-    const e1 = parseInt(end.replace('.', ':').split(':')[0], 10) * 60 + parseInt(end.replace('.', ':').split(':')[1], 10);
+  const checkConflict = (
+    day: number,
+    start: string,
+    end: string,
+    excludeId?: string
+  ): Course | undefined => {
+    const s1 =
+      parseInt(start.replace('.', ':').split(':')[0], 10) * 60 +
+      parseInt(start.replace('.', ':').split(':')[1], 10);
+    const e1 =
+      parseInt(end.replace('.', ':').split(':')[0], 10) * 60 +
+      parseInt(end.replace('.', ':').split(':')[1], 10);
 
     return courses.find((c) => {
       if (c.id === excludeId) return false;
-      if (c.dayOfWeek !== day) return false;
-      const s2 = parseInt(c.startTime.replace('.', ':').split(':')[0], 10) * 60 + parseInt(c.startTime.replace('.', ':').split(':')[1], 10);
-      const e2 = parseInt(c.endTime.replace('.', ':').split(':')[0], 10) * 60 + parseInt(c.endTime.replace('.', ':').split(':')[1], 10);
+      if (getEffectiveDay(c) !== day) return false;
+      const s2 =
+        parseInt(getEffectiveStartTime(c).replace('.', ':').split(':')[0], 10) * 60 +
+        parseInt(getEffectiveStartTime(c).replace('.', ':').split(':')[1], 10);
+      const e2 =
+        parseInt(getEffectiveEndTime(c).replace('.', ':').split(':')[0], 10) * 60 +
+        parseInt(getEffectiveEndTime(c).replace('.', ':').split(':')[1], 10);
       return Math.max(s1, s2) < Math.min(e1, e2);
     });
   };
 
   const openCreateModal = () => {
     setCourseToEdit(null);
-    setCode('AKT');
+    setCode('AKT124');
     setName('');
     setLecturer('');
-    setRoom('FEB Gedung Soetomo');
+    setRoom('Kelas Kecil');
     setDayOfWeek(1);
     setStartTime('08:00');
     setEndTime('10:30');
     setSks(3);
-    setClassCode('S1-AKT-3A');
-    setSemester(3);
+    setClassCode('B');
+    setSemester(1);
     setColor(COURSE_COLORS[Math.floor(Math.random() * COURSE_COLORS.length)]);
     setIsModalOpen(true);
   };
@@ -146,6 +213,92 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
     setSemester(c.semester);
     setColor(c.color || COURSE_COLORS[0]);
     setIsModalOpen(true);
+  };
+
+  // Open Geser Hari Modal
+  const openRescheduleModal = (c: Course, preferredTargetDay?: number) => {
+    setCourseToReschedule(c);
+    const currentEffDay = getEffectiveDay(c);
+    // If user dropped on specific day, use it; otherwise default to next day or same day
+    const initTarget = preferredTargetDay !== undefined ? preferredTargetDay : currentEffDay;
+    setRescheduleTargetDay(initTarget);
+    setRescheduleStartTime(getEffectiveStartTime(c));
+    setRescheduleEndTime(getEffectiveEndTime(c));
+    setRescheduleNote(c.temporaryShift?.note || 'Kuliah Pengganti Minggu Ini');
+    setIsRescheduleModalOpen(true);
+  };
+
+  // Action: Simpan Sementara (Kuliah Pengganti / Minggu Ini)
+  const handleSaveTemporaryShift = () => {
+    if (!courseToReschedule) return;
+
+    const origDay = courseToReschedule.temporaryShift?.originalDayOfWeek || courseToReschedule.dayOfWeek;
+    const origStart = courseToReschedule.temporaryShift?.originalStartTime || courseToReschedule.startTime;
+    const origEnd = courseToReschedule.temporaryShift?.originalEndTime || courseToReschedule.endTime;
+
+    const updated: Course = {
+      ...courseToReschedule,
+      temporaryShift: {
+        isShifted: true,
+        originalDayOfWeek: origDay,
+        originalStartTime: origStart,
+        originalEndTime: origEnd,
+        shiftedDayOfWeek: rescheduleTargetDay,
+        shiftedStartTime: rescheduleStartTime,
+        shiftedEndTime: rescheduleEndTime,
+        note: rescheduleNote.trim() || 'Kuliah Pengganti Sementara',
+        shiftedAt: Date.now(),
+      },
+    };
+
+    onSaveCourse(updated);
+    setIsRescheduleModalOpen(false);
+    const targetDayName = DAY_NAMES.find((d) => d.index === rescheduleTargetDay)?.name;
+    showToast(`⚡ Jadwal "${updated.name}" berhasil digeser SEMENTARA ke hari ${targetDayName}.`);
+  };
+
+  // Action: Simpan untuk Hari-Hari Selanjutnya (Permanen)
+  const handleSavePermanentShift = () => {
+    if (!courseToReschedule) return;
+
+    const updated: Course = {
+      ...courseToReschedule,
+      dayOfWeek: rescheduleTargetDay,
+      startTime: rescheduleStartTime,
+      endTime: rescheduleEndTime,
+      temporaryShift: undefined, // Bersihkan temporary shift
+    };
+
+    onSaveCourse(updated);
+    setIsRescheduleModalOpen(false);
+    const targetDayName = DAY_NAMES.find((d) => d.index === rescheduleTargetDay)?.name;
+    showToast(`✅ Jadwal "${updated.name}" resmi diubah PERMANEN untuk hari ${targetDayName} dan seterusnya.`);
+  };
+
+  // Action: Kembalikan ke Jadwal Rutin
+  const handleRevertTemporaryShift = (c: Course) => {
+    const updated: Course = {
+      ...c,
+      temporaryShift: undefined,
+    };
+    onSaveCourse(updated);
+    const origDayName = DAY_NAMES.find((d) => d.index === c.dayOfWeek)?.name;
+    showToast(`🔄 Jadwal "${c.name}" dikembalikan ke jadwal rutin semula (${origDayName}).`);
+  };
+
+  // Sync to official PDF schedule
+  const handleSyncToOfficialSchedule = () => {
+    if (confirm('Sinkronkan jadwal kembali ke 8 Mata Kuliah resmi KRS SIAKAD UPNVJ (Nadhif Aulia Ramadhan, 20 SKS)?')) {
+      if (onSyncOfficialSchedule) {
+        onSyncOfficialSchedule();
+      } else {
+        const official = getOfficialPdfCourses();
+        for (const c of official) {
+          onSaveCourse(c);
+        }
+      }
+      showToast('🎉 Berhasil menyinkronkan 8 mata kuliah resmi dari PDF KRS UPNVJ!');
+    }
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -169,13 +322,22 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
     onSaveCourse(newCourse);
     setIsModalOpen(false);
+    showToast(`Mata kuliah "${newCourse.name}" tersimpan.`);
   };
 
   const conflict = checkConflict(Number(dayOfWeek), startTime, endTime, courseToEdit?.id);
+  const rescheduleConflict = courseToReschedule
+    ? checkConflict(
+        rescheduleTargetDay,
+        rescheduleStartTime,
+        rescheduleEndTime,
+        courseToReschedule.id
+      )
+    : undefined;
 
   // Export iCal for schedule
   const handleExportScheduleIcs = () => {
-    let ics = [
+    const ics = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
       'PRODID:-//Planner Akuntansi UPNVJ//Schedule//ID',
@@ -189,9 +351,12 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
     };
 
     for (const c of courses) {
-      const byDay = dayOffsets[c.dayOfWeek] || 'MO';
-      const cleanStart = c.startTime.replace(/[^0-9]/g, '').padEnd(4, '0') + '00';
-      const cleanEnd = c.endTime.replace(/[^0-9]/g, '').padEnd(4, '0') + '00';
+      const effDay = getEffectiveDay(c);
+      const effStart = getEffectiveStartTime(c);
+      const effEnd = getEffectiveEndTime(c);
+      const byDay = dayOffsets[effDay] || 'MO';
+      const cleanStart = effStart.replace(/[^0-9]/g, '').padEnd(4, '0') + '00';
+      const cleanEnd = effEnd.replace(/[^0-9]/g, '').padEnd(4, '0') + '00';
 
       ics.push('BEGIN:VEVENT');
       ics.push(`UID:course-${c.id}@planner-akuntansi-upnvj`);
@@ -216,14 +381,75 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Header & Actions */}
+      {/* Toast Notification Banner */}
+      {toastMessage && (
+        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-bold shadow-lg flex items-center justify-between animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-emerald-200 shrink-0" />
+            <span>{toastMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="p-1 hover:bg-white/20 rounded-lg cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Official KRS UPNVJ Header Card */}
+      <div className="p-5 rounded-3xl bg-gradient-to-br from-emerald-50/90 via-teal-50/80 to-white border-2 border-teal-300 shadow-sm relative overflow-hidden">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-teal-600 text-white shadow-2xs">
+                KRS Resmi SIAKAD FEB UPNVJ
+              </span>
+              <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-white text-emerald-800 border border-emerald-200">
+                Semester 1 (Ganjil) • 20 SKS Reguler
+              </span>
+            </div>
+            <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-tight">
+              Jadwal Kuliah: Nadhif Aulia Ramadhan
+            </h2>
+            <p className="text-xs text-slate-600 font-medium">
+              NIM: <strong className="text-teal-900">2610112058</strong> • Kelas: <strong>B / 2026</strong> • S1 Akuntansi Fakultas Ekonomi dan Bisnis
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <a
+              href="/assets/aistudio/Jadwal_Kuliah_UPNVJ_2610112058_Nadhif_Aulia_Ramadhan_Sem1_b10656a4.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-teal-300 text-teal-800 hover:bg-teal-50 text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+            >
+              <FileText className="w-3.5 h-3.5 text-teal-600" />
+              <span>Buka Dokumen PDF Asli</span>
+              <ExternalLink className="w-3 h-3 text-slate-400" />
+            </a>
+
+            <button
+              type="button"
+              onClick={handleSyncToOfficialSchedule}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-50 text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Sinkronkan Jadwal SIAKAD (PDF)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Top Action Bar */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-lg sm:text-xl font-bold text-slate-900 leading-tight">
-            Jadwal Kuliah S1 Akuntansi
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Semester Gasal / Genap • Deteksi bentrok otomatis • Ekspor kalender & cetak
+          <h3 className="text-base sm:text-lg font-bold text-slate-900">
+            Grid Mingguan & Pergeseran Hari (Reschedule)
+          </h3>
+          <p className="text-xs text-slate-500">
+            Tarik & geser kartu matkul ke hari lain, atau klik tombol <strong>"Geser Hari"</strong> dengan pilihan <em>Simpan Sementara</em> atau <em>Simpan untuk Hari Selanjutnya</em>.
           </p>
         </div>
 
@@ -268,9 +494,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             </div>
             {ongoingCourse ? (
               <div>
-                <h3 className="text-base font-bold text-slate-900">
+                <h4 className="text-base font-bold text-slate-900">
                   {ongoingCourse.course.name}
-                </h3>
+                </h4>
                 <p className="text-xs text-slate-600 mt-0.5">
                   {ongoingCourse.course.room} • {ongoingCourse.course.lecturer}
                 </p>
@@ -295,11 +521,11 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             </div>
             {nextCourse ? (
               <div>
-                <h3 className="text-base font-bold text-slate-900">
+                <h4 className="text-base font-bold text-slate-900">
                   {nextCourse.course.name}
-                </h3>
+                </h4>
                 <p className="text-xs text-slate-600 mt-0.5">
-                  Pukul {nextCourse.course.startTime} - {nextCourse.course.endTime} WIB • {nextCourse.course.room}
+                  Pukul {getEffectiveStartTime(nextCourse.course)} - {getEffectiveEndTime(nextCourse.course)} WIB • {nextCourse.course.room}
                 </p>
                 <p className="text-xs font-semibold text-teal-700 mt-1">
                   Dimulai dalam {Math.floor(nextCourse.minutesUntil / 60)} jam {nextCourse.minutesUntil % 60} menit
@@ -314,95 +540,372 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
         </div>
       </div>
 
-      {/* Weekly Grid (Senin - Sabtu) */}
+      {/* Weekly Grid (Senin - Sabtu) with Drag-and-Drop Dropzones */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {DAY_NAMES.map((day) => {
           const dayCourses = courses
-            .filter((c) => c.dayOfWeek === day.index)
-            .sort((a, b) => a.startTime.localeCompare(b.startTime));
+            .filter((c) => getEffectiveDay(c) === day.index)
+            .sort((a, b) => getEffectiveStartTime(a).localeCompare(getEffectiveStartTime(b)));
           const isToday = day.index === todayDayIndex;
+          const isDropTarget = dragOverDayIndex === day.index;
 
           return (
             <div
               key={day.index}
-              className={`rounded-2xl p-3.5 border transition-all ${
-                isToday
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                setDragOverDayIndex(day.index);
+              }}
+              onDragLeave={() => {
+                setDragOverDayIndex(null);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverDayIndex(null);
+                const courseId = e.dataTransfer.getData('text/plain');
+                const droppedCourse = courses.find((c) => c.id === courseId);
+                if (droppedCourse) {
+                  openRescheduleModal(droppedCourse, day.index);
+                }
+              }}
+              className={`rounded-2xl p-3.5 border transition-all flex flex-col justify-between ${
+                isDropTarget
+                  ? 'bg-emerald-100/70 border-emerald-500 scale-[1.02] shadow-md ring-2 ring-emerald-400'
+                  : isToday
                   ? 'bg-teal-50/80 border-teal-400 shadow-sm'
                   : 'bg-white border-teal-100 shadow-2xs'
               }`}
             >
-              {/* Day Header */}
-              <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-teal-100">
-                <span className={`text-sm font-bold ${isToday ? 'text-teal-800' : 'text-slate-800'}`}>
-                  {day.name}
-                </span>
-                {isToday && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-600 text-white">
-                    Hari ini
-                  </span>
-                )}
+              <div>
+                {/* Day Header */}
+                <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-teal-100">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-sm font-bold ${isToday ? 'text-teal-800' : 'text-slate-800'}`}>
+                      {day.name}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-semibold">
+                      ({dayCourses.length})
+                    </span>
+                  </div>
+                  {isToday && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-600 text-white">
+                      Hari ini
+                    </span>
+                  )}
+                </div>
+
+                {/* Course Cards in this Day */}
+                <div className="space-y-2.5 min-h-[140px]">
+                  {dayCourses.map((c) => {
+                    const isShifted = Boolean(c.temporaryShift?.isShifted);
+                    const origDay = c.temporaryShift?.originalDayOfWeek;
+                    const origDayName = DAY_NAMES.find((d) => d.index === origDay)?.name;
+
+                    return (
+                      <div
+                        key={c.id}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', c.id);
+                        }}
+                        className={`p-3 rounded-xl border hover:shadow-md transition-all relative group cursor-grab active:cursor-grabbing ${
+                          isShifted
+                            ? 'bg-amber-50/90 border-amber-300 ring-1 ring-amber-300 shadow-2xs'
+                            : 'bg-slate-50/90 border-teal-100 hover:border-teal-300 shadow-2xs'
+                        }`}
+                        style={{ borderLeftWidth: '4px', borderLeftColor: c.color || '#0D9488' }}
+                      >
+                        {/* Temporary shift banner if applicable */}
+                        {isShifted && (
+                          <div className="mb-2 p-1.5 rounded-lg bg-amber-100 text-amber-900 text-[10px] font-bold flex items-center justify-between gap-1">
+                            <div className="flex items-center gap-1">
+                              <Sparkles className="w-3 h-3 text-amber-600 shrink-0" />
+                              <span className="truncate">Sementara (Asli: {origDayName})</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRevertTemporaryShift(c);
+                              }}
+                              title="Kembalikan ke jadwal rutin asli"
+                              className="p-0.5 text-amber-800 hover:text-amber-950 hover:bg-amber-200/60 rounded cursor-pointer shrink-0"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="flex items-start justify-between gap-1 mb-1.5">
+                          <span className="text-xs font-bold text-slate-900 leading-snug line-clamp-3 break-words">
+                            {c.name}
+                          </span>
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(c)}
+                              title="Edit Matkul"
+                              className="p-1 text-slate-400 hover:text-teal-600 cursor-pointer"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onDeleteCourse(c.id)}
+                              title="Hapus Matkul"
+                              className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1 text-[11px] text-slate-600 mb-2.5">
+                          <div className="flex items-center gap-1 font-semibold text-teal-700 tabular-nums">
+                            <Clock className="w-3 h-3 shrink-0" />
+                            <span>
+                              {getEffectiveStartTime(c)} - {getEffectiveEndTime(c)}
+                            </span>
+                            <span className="text-[10px] text-slate-400">({c.sks} SKS)</span>
+                          </div>
+                          <div className="flex items-center gap-1 truncate text-slate-500">
+                            <MapPin className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{c.room}</span>
+                          </div>
+                          <div className="flex items-center gap-1 truncate text-slate-500">
+                            <User className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{c.lecturer}</span>
+                          </div>
+                        </div>
+
+                        {/* Interactive "Geser Hari" button right on card */}
+                        <div className="pt-2 border-t border-teal-100/60 flex items-center justify-between">
+                          <button
+                            type="button"
+                            onClick={() => openRescheduleModal(c)}
+                            className="w-full flex items-center justify-center gap-1.5 py-1 px-2 rounded-lg bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-800 text-[10px] font-bold transition-colors cursor-pointer shadow-2xs"
+                          >
+                            <ArrowRightLeft className="w-3 h-3 text-teal-600" />
+                            <span>Geser Hari Kuliah</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {dayCourses.length === 0 && (
+                    <div className="py-10 text-center text-xs text-slate-400 italic border-2 border-dashed border-teal-100/60 rounded-xl">
+                      {isDropTarget ? 'Lepaskan untuk pindah ke hari ini!' : 'Tidak ada jadwal'}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Course Cards in this Day */}
-              <div className="space-y-2.5 min-h-[120px]">
-                {dayCourses.map((c) => (
-                  <div
-                    key={c.id}
-                    className="p-3 rounded-xl bg-slate-50/80 border border-teal-100 hover:shadow-xs transition-shadow relative group"
-                    style={{ borderLeftWidth: '4px', borderLeftColor: c.color || '#0D9488' }}
-                  >
-                    <div className="flex items-start justify-between gap-1 mb-1.5">
-                      <span className="text-xs font-bold text-slate-900 leading-snug line-clamp-3 break-words">
-                        {c.name}
-                      </span>
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(c)}
-                          className="p-1 text-slate-400 hover:text-teal-600 cursor-pointer"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onDeleteCourse(c.id)}
-                          className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1 text-[11px] text-slate-600">
-                      <div className="flex items-center gap-1 font-semibold text-teal-700 tabular-nums">
-                        <Clock className="w-3 h-3 shrink-0" />
-                        <span>{c.startTime} - {c.endTime}</span>
-                        <span className="text-[10px] text-slate-400">({c.sks} SKS)</span>
-                      </div>
-                      <div className="flex items-center gap-1 truncate text-slate-500">
-                        <MapPin className="w-3 h-3 shrink-0" />
-                        <span className="truncate">{c.room}</span>
-                      </div>
-                      <div className="flex items-center gap-1 truncate text-slate-500">
-                        <User className="w-3 h-3 shrink-0" />
-                        <span className="truncate">{c.lecturer}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-
-                {dayCourses.length === 0 && (
-                  <div className="py-8 text-center text-xs text-slate-400 italic">
-                    Tidak ada jadwal
-                  </div>
-                )}
+              {/* Drag instruction footer on day card */}
+              <div className="text-[10px] text-slate-400 text-center pt-2 mt-2 border-t border-slate-100">
+                Tarik matkul ke sini untuk geser
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Modal CRUD Mata Kuliah */}
+      {/* ============================================================== */}
+      {/* MODAL GESER HARI PERKULIAHAN (INTERACTIVE RESCHEDULE)           */}
+      {/* ============================================================== */}
+      {isRescheduleModalOpen && courseToReschedule && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-6 sm:p-7 shadow-2xl border border-teal-200 overflow-hidden">
+            <div className="flex items-center justify-between pb-3 border-b border-teal-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-teal-100 text-teal-800">
+                  <ArrowRightLeft className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Geser Hari Perkuliahan
+                  </h3>
+                  <p className="text-xs text-teal-700">
+                    {courseToReschedule.name} ({courseToReschedule.code})
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsRescheduleModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Conflict warning if detected */}
+              {rescheduleConflict && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 text-xs flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Peringatan Bentrok Jadwal:</span> Pada hari dan jam tersebut telah terisi mata kuliah <strong>{rescheduleConflict.name}</strong> ({getEffectiveStartTime(rescheduleConflict)} - {getEffectiveEndTime(rescheduleConflict)}).
+                  </div>
+                </div>
+              )}
+
+              {/* Course Info Card */}
+              <div className="p-3.5 rounded-2xl bg-teal-50/60 border border-teal-200 text-xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Mata Kuliah:</span>
+                  <span className="font-bold text-slate-900">{courseToReschedule.name}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Dosen Pengampu:</span>
+                  <span className="font-semibold text-slate-800">{courseToReschedule.lecturer}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Hari Asal:</span>
+                  <span className="font-bold text-teal-800">
+                    {DAY_NAMES.find((d) => d.index === courseToReschedule.dayOfWeek)?.name} ({courseToReschedule.startTime} - {courseToReschedule.endTime})
+                  </span>
+                </div>
+              </div>
+
+              {/* Day Selector */}
+              <div>
+                <label className="text-xs font-bold text-slate-800 mb-1.5 block">
+                  Pilih Hari Baru:
+                </label>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                  {DAY_NAMES.map((d) => {
+                    const isSelected = rescheduleTargetDay === d.index;
+                    return (
+                      <button
+                        key={d.index}
+                        type="button"
+                        onClick={() => setRescheduleTargetDay(d.index)}
+                        className={`py-2 px-1 text-center rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-teal-600 text-white shadow-sm ring-2 ring-teal-400'
+                            : 'bg-white border border-teal-200 text-slate-700 hover:bg-teal-50'
+                        }`}
+                      >
+                        {d.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Time Selector */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 mb-1 block">
+                    Jam Mulai Baru
+                  </label>
+                  <input
+                    type="time"
+                    value={rescheduleStartTime}
+                    onChange={(e) => setRescheduleStartTime(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-teal-200 bg-white text-xs text-slate-900 outline-none focus:ring-2 focus:ring-teal-400 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 mb-1 block">
+                    Jam Selesai Baru
+                  </label>
+                  <input
+                    type="time"
+                    value={rescheduleEndTime}
+                    onChange={(e) => setRescheduleEndTime(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-teal-200 bg-white text-xs text-slate-900 outline-none focus:ring-2 focus:ring-teal-400 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Notes / Alasan Pergeseran */}
+              <div>
+                <label className="text-xs font-semibold text-slate-700 mb-1 block">
+                  Catatan / Alasan Pergeseran (Opsional)
+                </label>
+                <input
+                  type="text"
+                  value={rescheduleNote}
+                  onChange={(e) => setRescheduleNote(e.target.value)}
+                  placeholder="Contoh: Kuliah pengganti tanggal 30 Okt / Dosen izin"
+                  className="w-full px-3 py-2 rounded-xl border border-teal-200 bg-white text-xs text-slate-900 outline-none focus:ring-2 focus:ring-teal-400"
+                />
+              </div>
+
+              {/* DUA PILIHAN SIMPAN SESUAI SPESIFIKASI USER */}
+              <div className="pt-3 border-t border-teal-100 space-y-2.5">
+                <div className="text-xs font-bold text-slate-800">
+                  Pilih Cara Penyimpanan:
+                </div>
+
+                {/* Pilihan 1: Simpan Sementara */}
+                <button
+                  type="button"
+                  onClick={handleSaveTemporaryShift}
+                  className="w-full p-3 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50/60 hover:from-amber-100 hover:to-orange-100 border border-amber-300 text-left transition-all cursor-pointer group shadow-2xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 rounded-xl bg-amber-500 text-white shadow-2xs">
+                        <Clock className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-amber-950 group-hover:text-amber-900">
+                          1. Simpan Sementara
+                        </div>
+                        <div className="text-[11px] text-amber-800">
+                          Hanya berlaku untuk minggu ini / kuliah pengganti sementara. Jadwal asli tetap terjaga & bisa dikembalikan kapan saja.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Pilihan 2: Simpan untuk Hari-Hari Selanjutnya */}
+                <button
+                  type="button"
+                  onClick={handleSavePermanentShift}
+                  className="w-full p-3 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 hover:from-emerald-100 hover:to-teal-100 border border-teal-300 text-left transition-all cursor-pointer group shadow-2xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 rounded-xl bg-emerald-600 text-white shadow-2xs">
+                        <CheckCircle2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-teal-950 group-hover:text-teal-900">
+                          2. Simpan untuk Hari-Hari Selanjutnya
+                        </div>
+                        <div className="text-[11px] text-teal-800">
+                          Permanen mengubah jadwal rutin mingguan mata kuliah untuk seterusnya di database.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              <div className="pt-2 text-right">
+                <button
+                  type="button"
+                  onClick={() => setIsRescheduleModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL CRUD MATA KULIAH BARU / EDIT                             */}
+      {/* ============================================================== */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-lg p-6 sm:p-7 shadow-2xl border border-teal-100">
@@ -438,7 +941,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     type="text"
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
-                    placeholder="AKT201"
+                    placeholder="AKT124103"
                     className="w-full px-3 py-1.5 rounded-xl border border-teal-200 bg-white text-xs focus:ring-2 focus:ring-teal-400"
                   />
                 </div>
@@ -451,7 +954,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Akuntansi Keuangan Menengah 1"
+                    placeholder="Pengantar Akuntansi"
                     className="w-full px-3 py-1.5 rounded-xl border border-teal-200 bg-white text-xs focus:ring-2 focus:ring-teal-400"
                   />
                 </div>
@@ -478,7 +981,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                   type="text"
                   value={room}
                   onChange={(e) => setRoom(e.target.value)}
-                  placeholder="Gedung Soetomo FEB 301 / Zoom"
+                  placeholder="Kelas Kecil / Lab Komputer"
                   className="w-full px-3 py-1.5 rounded-xl border border-teal-200 bg-white text-xs focus:ring-2 focus:ring-teal-400"
                 />
               </div>
@@ -546,7 +1049,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     type="text"
                     value={classCode}
                     onChange={(e) => setClassCode(e.target.value)}
-                    placeholder="S1-AKT-3A"
+                    placeholder="B"
                     className="w-full px-3 py-1.5 rounded-xl border border-teal-200 bg-white text-xs focus:ring-2 focus:ring-teal-400"
                   />
                 </div>

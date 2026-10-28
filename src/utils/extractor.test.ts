@@ -60,6 +60,16 @@ test('detectCourseAndType mendeteksi mata kuliah akuntansi dan jenis tugas', () 
   const res2 = detectCourseAndType(text2);
   assert.equal(res2.course, 'Auditing');
   assert.equal(res2.type, 'Praktikum');
+
+  const text3 = 'Tugas Individu Esai Nilai-Nilai Bela Negara di Lingkungan Kampus UPNVJ';
+  const res3 = detectCourseAndType(text3);
+  assert.equal(res3.course, 'Pendidikan Bela Negara');
+  assert.equal(res3.type, 'Individu');
+
+  const text4 = 'Praktikum pengantar akuntansi jurnal penyesuaian worksheet';
+  const res4 = detectCourseAndType(text4);
+  assert.equal(res4.course, 'Praktikum Pengantar Akuntansi');
+  assert.equal(res4.type, 'Praktikum');
 });
 
 test('detectSuggestedDeadlines mendeteksi tanggal pengumpulan untuk chip saran', () => {

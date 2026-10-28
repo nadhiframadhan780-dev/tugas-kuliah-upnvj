@@ -18,8 +18,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   enableConfetti: true,
   enableNotifications: false,
   aiEnabled: false,
-  userName: 'Mahasiswa Akuntansi',
-  hasCompletedOnboarding: false,
+  userName: 'Nadhif Aulia Ramadhan',
+  userNim: '2610112058',
+  userMajor: 'S1 Akuntansi - Kelas B/2026',
+  hasCompletedOnboarding: true,
 };
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -374,79 +376,125 @@ export const settingsRepository = {
 // -------------------------------------------------------------
 // Seed Data: Contoh Mata Kuliah & Tugas Akuntansi UPNVJ
 // -------------------------------------------------------------
-export function getSampleAccountingCourses(): Course[] {
+export function getOfficialPdfCourses(): Course[] {
   return [
     {
-      id: 'course-1',
-      code: 'AKT201',
-      name: 'Akuntansi Keuangan Menengah 1',
-      lecturer: 'Dr. Sri Rahayu, S.E., M.Ak., Ak., CA',
-      room: 'FEB Gedung Soetomo 301',
+      id: 'course-upn-1',
+      code: 'AKT124103',
+      name: 'Pengantar Ilmu Ekonomi',
+      lecturer: 'Khusnul Khatimah. S.P., M.Si.',
+      room: 'Kelas Kecil',
       dayOfWeek: 1, // Senin
-      startTime: '08:00',
-      endTime: '10:30',
+      startTime: '09:40',
+      endTime: '12:10',
       sks: 3,
-      classCode: 'S1-AKT-3A',
-      semester: 3,
+      classCode: 'C',
+      semester: 1,
       color: '#0D9488', // Teal
     },
     {
-      id: 'course-2',
-      code: 'AKT202',
-      name: 'Akuntansi Biaya',
-      lecturer: 'Dra. Endang Wulandari, M.Si., Ak.',
-      room: 'FEB Gedung Soetomo 302',
+      id: 'course-upn-2',
+      code: 'MKW124104',
+      name: 'Pendidikan Bela Negara',
+      lecturer: 'Agus Kusmana, SE, MM, CHCSA',
+      room: 'Kelas Kecil',
       dayOfWeek: 2, // Selasa
-      startTime: '10:30',
-      endTime: '13:00',
-      sks: 3,
-      classCode: 'S1-AKT-3A',
-      semester: 3,
+      startTime: '07:10',
+      endTime: '08:50',
+      sks: 2,
+      classCode: 'E',
+      semester: 1,
       color: '#059669', // Emerald
     },
     {
-      id: 'course-3',
-      code: 'AKT301',
-      name: 'Auditing 1',
-      lecturer: 'Bambang Sugiharto, S.E., M.M., CPA',
-      room: 'FEB Gedung Soetomo 401',
-      dayOfWeek: 3, // Rabu
-      startTime: '08:00',
-      endTime: '10:30',
-      sks: 3,
-      classCode: 'S1-AKT-3A',
-      semester: 5,
-      color: '#0891B2', // Cyan
-    },
-    {
-      id: 'course-4',
-      code: 'AKT203',
-      name: 'Perpajakan 1',
-      lecturer: 'Ahmad Fauzi, S.E., M.Ak., BKP',
-      room: 'FEB Gedung Soetomo 205',
-      dayOfWeek: 4, // Kamis
+      id: 'course-upn-3',
+      code: 'AKT124104',
+      name: 'Bahasa Inggris Ekonomi dan Bisnis',
+      lecturer: 'Kania Mayastika, Ph.D',
+      room: 'Kelas Kecil',
+      dayOfWeek: 2, // Selasa
       startTime: '13:00',
       endTime: '15:30',
       sks: 3,
-      classCode: 'S1-AKT-3A',
-      semester: 3,
+      classCode: 'B',
+      semester: 1,
+      color: '#0891B2', // Cyan
+    },
+    {
+      id: 'course-upn-4',
+      code: 'AKT124105',
+      name: 'Pengantar Manajemen dan Bisnis',
+      lecturer: 'Agus Kusmana, SE, MM, CHCSA',
+      room: 'Kelas Kecil',
+      dayOfWeek: 2, // Selasa
+      startTime: '15:30',
+      endTime: '18:00',
+      sks: 3,
+      classCode: 'B',
+      semester: 1,
+      color: '#2563EB', // Blue
+    },
+    {
+      id: 'course-upn-5',
+      code: 'MKW124107',
+      name: 'Kewarganegaraan',
+      lecturer: 'Hairunnisa BR. Sagala, S.Sos., MA',
+      room: 'Kelas Kecil',
+      dayOfWeek: 3, // Rabu
+      startTime: '07:10',
+      endTime: '08:50',
+      sks: 2,
+      classCode: 'E',
+      semester: 1,
       color: '#D97706', // Amber
     },
     {
-      id: 'course-5',
-      code: 'AKT302',
-      name: 'Sistem Informasi Akuntansi',
-      lecturer: 'Rina Mayasari, S.Kom., M.Ak.',
-      room: 'Lab Komputer Akuntansi Gedung Ki Hajar Dewantara',
+      id: 'course-upn-6',
+      code: 'MKW124101',
+      name: 'Agama',
+      lecturer: 'Dr. Badruddin, S.Pd.I., M.Pd',
+      room: 'Kelas Kecil',
       dayOfWeek: 5, // Jumat
-      startTime: '08:00',
-      endTime: '10:30',
-      sks: 3,
-      classCode: 'S1-AKT-3A',
-      semester: 5,
+      startTime: '07:10',
+      endTime: '08:50',
+      sks: 2,
+      classCode: 'E',
+      semester: 1,
       color: '#7C3AED', // Violet
     },
+    {
+      id: 'course-upn-7',
+      code: 'AKT124102',
+      name: 'Praktikum Pengantar Akuntansi',
+      lecturer: 'Ranti Nugraheni, S.Si.M, Ak',
+      room: 'Kelas Kecil',
+      dayOfWeek: 5, // Jumat
+      startTime: '13:00',
+      endTime: '14:40',
+      sks: 2,
+      classCode: 'B',
+      semester: 1,
+      color: '#0D9488', // Teal
+    },
+    {
+      id: 'course-upn-8',
+      code: 'AKT124101',
+      name: 'Pengantar Akuntansi',
+      lecturer: 'Prof. Dr. Amrie Firmansyah, SE., M.Ak., ME',
+      room: 'Kelas Kecil',
+      dayOfWeek: 5, // Jumat
+      startTime: '15:30',
+      endTime: '18:00',
+      sks: 3,
+      classCode: 'B',
+      semester: 1,
+      color: '#059669', // Emerald
+    },
   ];
+}
+
+export function getSampleAccountingCourses(): Course[] {
+  return getOfficialPdfCourses();
 }
 
 export function getSampleAccountingTasks(nowUtc: number = Date.now()): Task[] {
@@ -653,9 +701,10 @@ export async function initializeDatabaseWithSampleIfEmpty(): Promise<void> {
   const tasks = await taskRepository.getAll();
   const courses = await courseRepository.getAll();
 
-  if (courses.length === 0) {
-    const sampleCourses = getSampleAccountingCourses();
-    await courseRepository.saveMany(sampleCourses);
+  const isOldSample = courses.some((c) => c.code === 'AKT201' || c.name.includes('Menengah 1'));
+  if (courses.length === 0 || isOldSample) {
+    const officialCourses = getOfficialPdfCourses();
+    await courseRepository.saveMany(officialCourses);
   }
 
   if (tasks.length === 0) {

@@ -154,16 +154,31 @@ export const TaskCard: React.FC<TaskCardProps> = ({
               )}
             </div>
 
-            {/* Quick Actions Dropdown Trigger */}
-            <div className="relative">
+            {/* Quick Actions & Delete */}
+            <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => setShowMenu(!showMenu)}
-                aria-label="Aksi tugas"
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirm(`Hapus tugas "${task.title}" yang tidak penting?`)) {
+                    onDeleteTask(task.id);
+                  }
+                }}
+                title="Hapus tugas yang tidak penting"
+                className="p-1 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
               >
-                <MoreVertical className="w-4 h-4" />
+                <Trash2 className="w-4 h-4" />
               </button>
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowMenu(!showMenu)}
+                  aria-label="Aksi tugas"
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
 
               {showMenu && (
                 <div
@@ -263,6 +278,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
               )}
             </div>
           </div>
+        </div>
 
           {/* Title */}
           <h2

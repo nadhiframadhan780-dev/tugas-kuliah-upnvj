@@ -101,6 +101,7 @@ import {
   Timer,
   ChevronRight,
   ChevronDown,
+  Trash2,
 } from 'lucide-react';
 
 export default function App() {
@@ -415,6 +416,70 @@ export default function App() {
     }, 6000);
   };
 
+  const handlePermanentDeleteTask = async (taskId: string) => {
+    if (confirm('Hapus tugas ini secara permanen dari perangkat? Data tidak dapat dikembalikan lagi.')) {
+      await taskRepository.delete(taskId);
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    }
+  };
+
+  const handleRestoreTask = async (taskId: string) => {
+    await taskRepository.restoreFromTrash(taskId);
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id === taskId) {
+          const copy = { ...t };
+          delete copy.deletedAt;
+          return copy;
+        }
+        return t;
+      })
+    );
+  };
+
+  const handleEmptyTrash = async () => {
+    if (confirm('Kosongkan semua tugas di tong sampah secara permanen?')) {
+      await taskRepository.emptyTrash();
+      setTasks((prev) => prev.filter((t) => !t.deletedAt));
+    }
+  };
+
+  const handleCleanCompletedTasks = async () => {
+    const completedTasks = tasks.filter((t) => t.status === 'completed' && !t.deletedAt);
+    if (completedTasks.length === 0) {
+      alert('Tidak ada tugas berstatus selesai yang perlu dibersihkan.');
+      return;
+    }
+    if (confirm(`Pindahkan ${completedTasks.length} tugas yang sudah selesai ke tong sampah?`)) {
+      for (const t of completedTasks) {
+        await taskRepository.moveToTrash(t.id);
+      }
+      setTasks((prev) =>
+        prev.map((t) => (t.status === 'completed' && !t.deletedAt ? { ...t, deletedAt: Date.now() } : t))
+      );
+      setUndoToast({
+        show: true,
+        message: `${completedTasks.length} tugas selesai dipindahkan ke tong sampah.`,
+        action: async () => {
+          for (const t of completedTasks) {
+            await taskRepository.restoreFromTrash(t.id);
+          }
+          setTasks((prev) =>
+            prev.map((t) => {
+              if (completedTasks.some((ct) => ct.id === t.id)) {
+                const copy = { ...t };
+                delete copy.deletedAt;
+                return copy;
+              }
+              return t;
+            })
+          );
+          setUndoToast(null);
+        },
+      });
+    }
+  };
+
   const handleDuplicateTask = async (task: Task) => {
     const duplicated: Task = {
       ...task,
@@ -558,7 +623,12 @@ export default function App() {
   const filteredTasks = useMemo(() => {
     return tasks
       .filter((t) => {
-        // Exclude deleted (trash)
+        // Tab filter: Jika tab sampah, tampilkan khusus tugas yang telah dihapus
+        if (filterOptions.tab === 'sampah') {
+          return Boolean(t.deletedAt);
+        }
+
+        // Exclude deleted (trash) untuk semua tab lainnya
         if (t.deletedAt) return false;
 
         // Tab filter
@@ -675,6 +745,7 @@ export default function App() {
   // Summary counts for dashboard badges
   const counts = useMemo(() => {
     const nonDeleted = tasks.filter((t) => !t.deletedAt);
+    const trashed = tasks.filter((t) => Boolean(t.deletedAt));
     const active = nonDeleted.filter((t) => t.status !== 'completed' && t.status !== 'archived').length;
     const completed = nonDeleted.filter((t) => t.status === 'completed').length;
     const overdue = nonDeleted.filter(
@@ -684,7 +755,7 @@ export default function App() {
       if (t.status === 'completed') return false;
       return getRelativeCalendarDay(t.deadlineAt, settings.timezone, nowUtc) === 'Hari ini';
     }).length;
-    return { active, completed, overdue, today, total: nonDeleted.length };
+    return { active, completed, overdue, today, total: nonDeleted.length, trash: trashed.length };
   }, [tasks, nowUtc, settings.timezone]);
 
   return (
@@ -1085,6 +1156,19 @@ export default function App() {
                     <span>Ekspor Kalender (.ics)</span>
                   </button>
 
+                  {/* Bersihkan Tugas Selesai / Tak Penting */}
+                  {counts.completed > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleCleanCompletedTasks}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-rose-200 text-rose-700 text-xs font-semibold hover:bg-rose-50 cursor-pointer shadow-xs transition-colors"
+                      title="Pindahkan semua tugas selesai yang sudah tidak penting ke tong sampah"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Bersihkan Tugas Selesai ({counts.completed})</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => {
@@ -1099,7 +1183,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Status Tab Filters (Semua, Aktif, Hari Ini, Minggu Ini, Terlambat, Selesai) */}
+              {/* Status Tab Filters (Semua, Aktif, Hari Ini, Minggu Ini, Terlambat, Selesai, Tong Sampah) */}
               <div className="flex border-b border-teal-100 overflow-x-auto gap-2 sm:gap-4 text-xs font-semibold pb-1">
                 {[
                   { id: 'semua', label: 'Semua Tugas', count: counts.total },
@@ -1108,6 +1192,7 @@ export default function App() {
                   { id: 'minggu_ini', label: 'Minggu Ini', count: next7DaysTasks.length },
                   { id: 'terlambat', label: 'Terlambat', count: counts.overdue, isAlert: true },
                   { id: 'selesai', label: 'Selesai', count: counts.completed },
+                  { id: 'sampah', label: 'Tong Sampah', count: counts.trash, isTrash: true },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -1115,14 +1200,18 @@ export default function App() {
                     onClick={() => setFilterOptions({ ...filterOptions, tab: tab.id as any })}
                     className={`py-2 px-3.5 rounded-t-xl transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
                       filterOptions.tab === tab.id
-                        ? 'border-b-2 border-teal-600 text-teal-800 font-bold bg-teal-50/70'
+                        ? tab.isTrash
+                          ? 'border-b-2 border-rose-500 text-rose-800 font-bold bg-rose-50/70'
+                          : 'border-b-2 border-teal-600 text-teal-800 font-bold bg-teal-50/70'
                         : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                     }`}
                   >
                     <span>{tab.label}</span>
                     <span
                       className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        tab.isAlert && tab.count > 0
+                        tab.isTrash && tab.count > 0
+                          ? 'bg-rose-100 text-rose-700'
+                          : tab.isAlert && tab.count > 0
                           ? 'bg-rose-100 text-rose-700'
                           : 'bg-teal-100 text-teal-800'
                       }`}
@@ -1132,6 +1221,27 @@ export default function App() {
                   </button>
                 ))}
               </div>
+
+              {/* Trash Toolbar if on sampah tab */}
+              {filterOptions.tab === 'sampah' && (
+                <div className="p-3.5 rounded-2xl bg-rose-50/80 border border-rose-200 flex items-center justify-between flex-wrap gap-2 text-xs">
+                  <div className="flex items-center gap-2 text-rose-800 font-semibold">
+                    <Trash2 className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>
+                      Daftar tugas yang telah dihapus ({counts.trash} tugas). Anda dapat memulihkan tugas atau menghapusnya secara permanen.
+                    </span>
+                  </div>
+                  {counts.trash > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleEmptyTrash}
+                      className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer shadow-xs transition-colors"
+                    >
+                      Kosongkan Tong Sampah
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Search, Sort, Course Dropdowns */}
               <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -1200,27 +1310,64 @@ export default function App() {
               ) : (
                 /* List View */
                 <div className="space-y-3.5">
-                  {filteredTasks.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      timezone={settings.timezone}
-                      nowUtc={nowUtc}
-                      onToggleComplete={handleToggleComplete}
-                      onEditTask={(t) => {
-                        setTaskToEdit(t);
-                        setIsTaskModalOpen(true);
-                      }}
-                      onDuplicateTask={handleDuplicateTask}
-                      onDeleteTask={handleDeleteTask}
-                      onExtendDeadline={handleExtendDeadline}
-                      onStartPomodoro={(t) => {
-                        setSelectedPomodoroTask(t);
-                        setIsPomodoroOpen(true);
-                      }}
-                      onToggleSubtask={handleToggleSubtask}
-                    />
-                  ))}
+                  {filteredTasks.map((task) =>
+                    filterOptions.tab === 'sampah' ? (
+                      <div
+                        key={task.id}
+                        className="p-4 rounded-2xl bg-white border border-rose-200 shadow-2xs flex items-center justify-between gap-3 flex-wrap"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-slate-800 text-sm line-through text-slate-400 truncate">
+                            {task.title}
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-teal-800">{task.courseName || task.type}</span>
+                            <span>•</span>
+                            <span>Dihapus pada: {new Date(task.deletedAt || 0).toLocaleString('id-ID')}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleRestoreTask(task.id)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 border border-teal-200 text-teal-800 hover:bg-teal-100 text-xs font-bold cursor-pointer transition-colors"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-teal-600" />
+                            <span>Pulihkan</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePermanentDeleteTask(task.id)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 text-xs font-bold cursor-pointer transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Hapus Permanen</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        timezone={settings.timezone}
+                        nowUtc={nowUtc}
+                        onToggleComplete={handleToggleComplete}
+                        onEditTask={(t) => {
+                          setTaskToEdit(t);
+                          setIsTaskModalOpen(true);
+                        }}
+                        onDuplicateTask={handleDuplicateTask}
+                        onDeleteTask={handleDeleteTask}
+                        onExtendDeadline={handleExtendDeadline}
+                        onStartPomodoro={(t) => {
+                          setSelectedPomodoroTask(t);
+                          setIsPomodoroOpen(true);
+                        }}
+                        onToggleSubtask={handleToggleSubtask}
+                      />
+                    )
+                  )}
 
                   {filteredTasks.length === 0 && (
                     <div className="bg-white rounded-2xl p-10 text-center border-2 border-dashed border-teal-200 shadow-sm space-y-3">
@@ -1228,22 +1375,28 @@ export default function App() {
                         <Inbox className="w-6 h-6" />
                       </div>
                       <h4 className="text-sm font-bold text-slate-800">
-                        Belum ada tugas di kategori ini.
+                        {filterOptions.tab === 'sampah'
+                          ? 'Tong sampah Anda kosong.'
+                          : 'Belum ada tugas di kategori ini.'}
                       </h4>
                       <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                        Unggah file soal tugas (PDF / Word / Excel) atau gunakan Quick Add untuk menambahkan tugas baru.
+                        {filterOptions.tab === 'sampah'
+                          ? 'Tidak ada tugas yang sedang berada di tempat sampah.'
+                          : 'Unggah file soal tugas (PDF / Word / Excel / Foto Gambar) atau gunakan Quick Add untuk menambahkan tugas baru.'}
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTaskToEdit(null);
-                          setIsTaskModalOpen(true);
-                        }}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Unggah Soal / Buat Tugas</span>
-                      </button>
+                      {filterOptions.tab !== 'sampah' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTaskToEdit(null);
+                            setIsTaskModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Unggah Soal / Buat Tugas</span>
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1259,6 +1412,7 @@ export default function App() {
               courses={courses}
               onSaveCourse={handleSaveCourse}
               onDeleteCourse={handleDeleteCourse}
+              onSyncOfficialSchedule={handleResetSampleData}
               timezone={settings.timezone}
               nowUtc={nowUtc}
             />
@@ -1431,6 +1585,7 @@ export default function App() {
         isOpen={isTaskModalOpen}
         onClose={() => setIsTaskModalOpen(false)}
         onSaveTask={handleSaveTask}
+        onDeleteTask={handleDeleteTask}
         taskToEdit={taskToEdit}
         courses={courses}
         timezone={settings.timezone}

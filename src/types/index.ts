@@ -76,10 +76,22 @@ export interface Task {
   updatedAt: number;
 }
 
+export interface CourseTemporaryShift {
+  isShifted: boolean;
+  originalDayOfWeek: number;
+  originalStartTime: string;
+  originalEndTime: string;
+  shiftedDayOfWeek: number;
+  shiftedStartTime: string;
+  shiftedEndTime: string;
+  note?: string; // misal "Kuliah Pengganti Minggu Ini"
+  shiftedAt: number;
+}
+
 export interface Course {
   id: string;
-  code: string; // e.g. "AKT201"
-  name: string; // e.g. "Akuntansi Keuangan Menengah 1"
+  code: string; // e.g. "AKT124103"
+  name: string; // e.g. "Pengantar Ilmu Ekonomi"
   lecturer: string; // Nama Dosen
   room: string; // Ruang kuliah atau link Zoom/Meet
   dayOfWeek: number; // 1 = Senin, 2 = Selasa, 3 = Rabu, 4 = Kamis, 5 = Jumat, 6 = Sabtu, 0 = Minggu
@@ -89,6 +101,7 @@ export interface Course {
   classCode: string; // e.g. "Kelas A", "S1-AKT-3A"
   semester: number; // Semester 1 - 8
   color: string; // HEX color untuk badge & kalender
+  temporaryShift?: CourseTemporaryShift;
 }
 
 export interface CalendarEvent {
@@ -129,12 +142,14 @@ export interface AppSettings {
   aiApiKey?: string;
   aiEnabled: boolean;
   userName: string;
+  userNim?: string;
+  userMajor?: string;
   hasCompletedOnboarding: boolean;
   lastBackupDate?: number;
 }
 
 export interface TaskFilterOptions {
-  tab: 'semua' | 'aktif' | 'hari_ini' | 'minggu_ini' | 'terlambat' | 'selesai';
+  tab: 'semua' | 'aktif' | 'hari_ini' | 'minggu_ini' | 'terlambat' | 'selesai' | 'sampah';
   search: string;
   courseId: string;
   priority: string;
