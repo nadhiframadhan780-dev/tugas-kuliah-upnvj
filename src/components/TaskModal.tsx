@@ -110,6 +110,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [links, setLinks] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
+  const [showEmbeddedPreview, setShowEmbeddedPreview] = useState(true);
 
   // Extraction Progress
   const [isExtracting, setIsExtracting] = useState(false);
@@ -140,6 +142,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setLinks(taskToEdit.links || []);
       setNotes(taskToEdit.notes || '');
       setAttachments(taskToEdit.attachments || []);
+      setActivePreviewIndex(0);
+      setShowEmbeddedPreview(true);
       setIsAutoExtracted(false);
       setSuggestedDeadlines([]);
       setRawExtractedText('');
@@ -160,6 +164,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setLinks([]);
       setNotes('');
       setAttachments([]);
+      setActivePreviewIndex(0);
+      setShowEmbeddedPreview(true);
       setIsAutoExtracted(false);
       setSuggestedDeadlines([]);
       setRawExtractedText('');
@@ -473,6 +479,148 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             </div>
           )}
 
+          {/* Pratinjau Berkas Soal Asli (PDF / Gambar) */}
+          {attachments.length > 0 && (
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-teal-50/70 via-emerald-50/40 to-white border-2 border-teal-200 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-xl bg-teal-600 text-white shadow-2xs">
+                    <Eye className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-bold text-teal-950 flex items-center gap-1.5">
+                      <span>Pratinjau Berkas Soal Tugas (PDF / Gambar)</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 font-bold border border-teal-200">
+                        {attachments.length} Berkas
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-teal-700">
+                      Tampilan berkas asli agar Anda dapat langsung membaca lembar soal tugas tanpa berpindah aplikasi.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowEmbeddedPreview(!showEmbeddedPreview)}
+                    className="text-xs font-semibold text-teal-800 bg-white hover:bg-teal-50 px-2.5 py-1 rounded-lg border border-teal-200 transition-colors cursor-pointer shadow-2xs"
+                  >
+                    {showEmbeddedPreview ? 'Perkecil Pratinjau' : 'Buka Pratinjau'}
+                  </button>
+                </div>
+              </div>
+
+              {showEmbeddedPreview && (
+                <div className="space-y-2 pt-1">
+                  {/* Tabs jika ada lebih dari 1 file */}
+                  {attachments.length > 1 && (
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+                      {attachments.map((att, idx) => (
+                        <button
+                          key={att.id || idx}
+                          type="button"
+                          onClick={() => setActivePreviewIndex(idx)}
+                          className={`px-2.5 py-1 rounded-lg font-semibold truncate max-w-[200px] transition-all cursor-pointer ${
+                            activePreviewIndex === idx
+                              ? 'bg-teal-600 text-white shadow-2xs'
+                              : 'bg-white text-slate-700 border border-teal-200 hover:bg-teal-50'
+                          }`}
+                        >
+                          {att.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {(() => {
+                    const currentAtt = attachments[activePreviewIndex] || attachments[0];
+                    if (!currentAtt) return null;
+
+                    const isPdf =
+                      currentAtt.mime?.includes('pdf') ||
+                      currentAtt.name.toLowerCase().endsWith('.pdf') ||
+                      currentAtt.dataUrl?.startsWith('data:application/pdf');
+
+                    const isImage =
+                      currentAtt.mime?.startsWith('image/') ||
+                      /\.(png|jpe?g|webp|bmp|gif)$/i.test(currentAtt.name) ||
+                      currentAtt.dataUrl?.startsWith('data:image/');
+
+                    return (
+                      <div className="space-y-2">
+                        {/* Toolbar Berkas */}
+                        <div className="flex items-center justify-between flex-wrap gap-2 text-xs bg-white/80 p-2 rounded-xl border border-teal-100">
+                          <span className="font-bold text-slate-800 truncate max-w-sm">
+                            {currentAtt.name} ({Math.round((currentAtt.size || 0) / 1024)} KB)
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {currentAtt.dataUrl && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const win = window.open();
+                                  if (win) {
+                                    if (isPdf) {
+                                      win.document.write(
+                                        `<iframe src="${currentAtt.dataUrl}" frameborder="0" style="border:0; top:0; left:0; bottom:0; right:0; width:100%; height:100%;" allowfullscreen></iframe>`
+                                      );
+                                    } else {
+                                      win.document.write(
+                                        `<body style="margin:0; background:#0f172a; display:flex; align-items:center; justify-content:center; min-height:100vh;"><img src="${currentAtt.dataUrl}" style="max-width:100%; max-height:100vh; object-fit:contain;" /></body>`
+                                      );
+                                    }
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 font-semibold border border-teal-200 text-xs transition-colors cursor-pointer"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5 text-teal-600" />
+                                <span>Buka di Tab Baru</span>
+                              </button>
+                            )}
+                            {currentAtt.dataUrl && (
+                              <a
+                                href={currentAtt.dataUrl}
+                                download={currentAtt.name}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs transition-colors cursor-pointer"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                <span>Unduh</span>
+                              </a>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Konten Pratinjau */}
+                        {isPdf && currentAtt.dataUrl ? (
+                          <div className="rounded-xl overflow-hidden border border-teal-200 shadow-xs bg-white">
+                            <iframe
+                              src={currentAtt.dataUrl}
+                              className="w-full h-80 sm:h-[460px]"
+                              title={currentAtt.name}
+                            />
+                          </div>
+                        ) : isImage && currentAtt.dataUrl ? (
+                          <div className="max-h-[460px] overflow-auto rounded-xl border border-teal-200 bg-slate-50 p-2 flex items-center justify-center">
+                            <img
+                              src={currentAtt.dataUrl}
+                              alt={currentAtt.name}
+                              className="max-h-[440px] w-auto max-w-full rounded-lg object-contain shadow-xs bg-white"
+                            />
+                          </div>
+                        ) : (
+                          <div className="p-4 text-center bg-white rounded-xl border border-teal-100 text-xs text-slate-600">
+                            Berkas dokumen Office/teks telah dianalisis. Anda dapat mengunduh berkas asli atau membaca teks soal lengkap di bawah.
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* 2. Judul Tugas (Wajib) */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -698,33 +846,44 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             </div>
           </div>
 
-          {/* 5. Penjelasan Soal (Ringkasan, Yang Harus Dikerjakan, Ketentuan) */}
+          {/* 5. Penjelasan Soal (Uraian Lengkap Sesuai Berkas, Yang Harus Dikerjakan, Ketentuan) */}
           <div className="space-y-3 pt-2 border-t border-teal-100">
             <div>
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
                 <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <span>Ringkasan Soal (2-4 Kalimat)</span>
+                  <span>Uraian & Teks Soal Tugas Lengkap (Sesuai Berkas yang Diunggah)</span>
                   {isAutoExtracted && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] bg-teal-100 text-teal-800 font-bold border border-teal-200">
-                      Terisi otomatis
+                      Sesuai Teks Asli Berkas
                     </span>
                   )}
                 </label>
+                <span className="text-[10px] text-teal-700 font-semibold bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                  {summary.length} karakter • {summary.split('\n').filter(Boolean).length} baris teks
+                </span>
               </div>
+              <p className="text-[11px] text-slate-500 mb-1.5">
+                Seluruh narasi kasus, tabel/transaksi akuntansi, dan instruksi lengkap disalin utuh dari berkas tanpa dipotong.
+              </p>
               <textarea
-                rows={3}
+                rows={9}
                 value={summary}
                 onChange={(e) => setSummary(e.target.value)}
-                placeholder="Ringkasan poin inti soal akuntansi yang harus dikerjakan..."
-                className="w-full px-3.5 py-2.5 rounded-xl border border-teal-200 bg-white text-slate-900 text-xs sm:text-sm focus:ring-2 focus:ring-teal-400 outline-none leading-relaxed shadow-xs"
+                placeholder="Uraian dan teks soal tugas akuntansi lengkap sesuai berkas yang diunggah..."
+                className="w-full px-3.5 py-2.5 rounded-xl border border-teal-200 bg-white text-slate-900 text-xs sm:text-sm focus:ring-2 focus:ring-teal-400 outline-none leading-relaxed shadow-xs font-sans whitespace-pre-wrap"
               />
             </div>
 
             {/* Yang Harus Dikerjakan */}
             <div>
-              <label className="text-xs font-bold text-slate-800 mb-1.5 block">
-                Yang Harus Dikerjakan (Instruksi / Butir Soal)
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <span>Yang Harus Dikerjakan (Instruksi Lengkap & Butir Soal)</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-teal-50 text-teal-700 font-bold border border-teal-200">
+                    {keyPoints.length} Butir
+                  </span>
+                </label>
+              </div>
               <div className="space-y-1.5">
                 {keyPoints.map((point, idx) => (
                   <div key={idx} className="flex items-center gap-2">

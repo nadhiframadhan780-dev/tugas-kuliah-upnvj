@@ -183,43 +183,40 @@ export function extractTitleFromText(rawText: string, filenameFallback: string =
 }
 
 /**
- * Ekstraksi ringkasan 2-4 kalimat dengan pembobotan kata kunci akuntansi
+ * Ekstraksi uraian soal lengkap sesuai dokumen yang diunggah
+ * Menyajikan seluruh isi instruksi, tabel data, dan butir soal utuh tanpa dipotong 2-4 kalimat
  */
 export function extractSummary(rawText: string): string {
-  const sentences = rawText
-    .split(/(?<=[.?!])\s+(?=[A-Z0-9])|\n+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 25 && s.length < 300 && !isKopLine(s));
-
-  if (sentences.length === 0) {
+  if (!rawText.trim()) {
     return 'Tugas pengerjaan soal dan latihan kasus akuntansi.';
   }
 
-  // Skor tiap kalimat berdasarkan kemunculan kata kunci aksi & akuntansi
-  const scored = sentences.map((sentence) => {
-    let score = 0;
-    const lower = sentence.toLowerCase();
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
 
-    for (const word of ACCOUNTING_ACTION_WORDS) {
-      if (lower.includes(word)) score += 3;
+  // Saring kop institusi yang ada di awal dokumen agar teks soal bersih dan langsung pada inti
+  const contentLines: string[] = [];
+  let pastKop = false;
+
+  for (const line of lines) {
+    if (!pastKop && isKopLine(line)) {
+      continue;
     }
-    for (const kw of TITLE_START_KEYWORDS) {
-      if (lower.includes(kw)) score += 2;
-    }
-    // Kalimat di bagian awal memiliki bobot sedikit lebih tinggi
-    return { sentence, score };
-  });
+    pastKop = true;
+    contentLines.push(line);
+  }
 
-  // Urutkan berdasarkan skor tertinggi
-  scored.sort((a, b) => b.score - a.score);
+  if (contentLines.length === 0) {
+    return rawText.trim();
+  }
 
-  const topSentences = scored.slice(0, 3).map((item) => item.sentence);
-
-  return topSentences.join(' ');
+  return contentLines.join('\n');
 }
 
 /**
- * Ekstraksi 3-8 butir yang harus dikerjakan (baris bernomor, soal, pertanyaan)
+ * Ekstraksi seluruh butir instruksi & soal yang harus dikerjakan (baris bernomor, soal, pertanyaan)
  */
 export function extractKeyPoints(rawText: string): string[] {
   const lines = rawText.split(/\r?\n/).map((l) => l.trim());
@@ -233,13 +230,13 @@ export function extractKeyPoints(rawText: string): string[] {
   ];
 
   for (const line of lines) {
-    if (points.length >= 8) break;
+    if (points.length >= 50) break; // Jangan batasi hanya 8, simpan seluruh butir soal
     if (isKopLine(line)) continue;
 
     for (const pattern of numberPatterns) {
       const match = line.match(pattern);
-      if (match && match[1] && match[1].length >= 10) {
-        const item = line.slice(0, 160);
+      if (match && match[1] && match[1].length >= 5) {
+        const item = line.slice(0, 300);
         if (!points.includes(item)) {
           points.push(item);
         }

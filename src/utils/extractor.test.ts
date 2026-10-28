@@ -4,6 +4,7 @@ import {
   cleanFilenameToTitle,
   extractTitleFromText,
   extractKeyPoints,
+  extractSummary,
   detectCourseAndType,
   detectSuggestedDeadlines,
   getSubtaskTemplateForType
@@ -84,3 +85,37 @@ test('getSubtaskTemplateForType menyediakan checklist sesuai jenis tugas', () =>
   assert.ok(subtasks.some((s) => s.title.includes('BAB I Pendahuluan')));
   assert.ok(subtasks.some((s) => s.title.includes('Daftar Pustaka')));
 });
+
+test('extractSummary mempertahankan seluruh uraian soal berkas tanpa dipotong 2-4 kalimat', () => {
+  const sampleFullAssignment = `
+UNIVERSITAS PEMBANGUNAN NASIONAL "VETERAN" JAKARTA
+FAKULTAS EKONOMI DAN BISNIS
+PROGRAM STUDI S1 AKUNTANSI
+
+Soal Kasus Rekonsiliasi Bank PT Veteran Jaya:
+Pada tanggal 31 Oktober 2026, saldo rekening kas menurut buku PT Veteran Jaya adalah Rp 45.200.000.
+Sedangkan saldo menurut rekening koran dari Bank Mandiri menunjukkan angka Rp 54.800.000.
+Setelah dilakukan pemeriksaan, ditemukan beberapa hal berikut:
+1. Setoran dalam perjalanan (deposit in transit) tanggal 31 Oktober sebesar Rp 8.500.000 belum tercatat di bank.
+2. Cek yang masih beredar (outstanding checks) berjumlah Rp 12.300.000 dengan rincian cek nomor 401 dan 405.
+3. Bank telah menagih wesel tagih senilai Rp 6.000.000 ditambah bunga Rp 200.000 dengan biaya penagihan Rp 50.000.
+4. Cek dari pelanggan PT Maju sebesar Rp 2.500.000 dikembalikan bank karena tidak ada dananya (NSF check).
+5. Biaya administrasi bank untuk bulan Oktober sebesar Rp 75.000 belum dicatat perusahaan.
+6. Perusahaan salah mencatat pembayaran utang yang seharusnya Rp 1.820.000 dicatat Rp 1.280.000.
+
+Diminta:
+a. Buatlah laporan rekonsiliasi saldo bank dan saldo buku untuk menunjukkan saldo kas yang benar.
+b. Buatlah seluruh ayat jurnal penyesuaian yang diperlukan per 31 Oktober 2026.
+  `;
+
+  const summary = extractSummary(sampleFullAssignment);
+  // Verifikasi bahwa seluruh poin 1 sampai 6 dan instruksi a-b tetap utuh
+  assert.ok(summary.includes('Soal Kasus Rekonsiliasi Bank PT Veteran Jaya:'));
+  assert.ok(summary.includes('1. Setoran dalam perjalanan'));
+  assert.ok(summary.includes('6. Perusahaan salah mencatat'));
+  assert.ok(summary.includes('a. Buatlah laporan rekonsiliasi'));
+  assert.ok(summary.includes('b. Buatlah seluruh ayat jurnal penyesuaian'));
+  // Kop UPNVJ harus disaring
+  assert.ok(!summary.includes('PROGRAM STUDI S1 AKUNTANSI'));
+});
+

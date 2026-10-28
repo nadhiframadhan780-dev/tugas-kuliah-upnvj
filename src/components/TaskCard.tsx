@@ -20,10 +20,12 @@ import {
   Users,
   ChevronDown,
   ChevronUp,
+  Eye,
 } from 'lucide-react';
 import { Task, DeadlineUrgency } from '../types';
 import { formatFullIndonesianDateTime, formatLiveCountdown } from '../utils/time';
 import { shareTaskViaWhatsAppOrWebShare, getGoogleCalendarUrl } from '../utils/ics';
+import { FilePreviewModal } from './FilePreviewModal';
 
 interface TaskCardProps {
   task: Task;
@@ -52,6 +54,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
 }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [showSubtasks, setShowSubtasks] = useState(false);
+  const [showFilePreview, setShowFilePreview] = useState(false);
 
   const isCompleted = task.status === 'completed';
   const countdown = formatLiveCountdown(task.deadlineAt, nowUtc);
@@ -195,6 +198,19 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                   >
                     Edit Detail Tugas
                   </button>
+                  {task.attachments && task.attachments.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMenu(false);
+                        setShowFilePreview(true);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-teal-50 text-teal-800 font-semibold cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-teal-600" />
+                      <span>Lihat Berkas Soal Asli</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -297,6 +313,21 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             </p>
           )}
 
+          {/* Tombol Utama Lihat Berkas Soal (PDF / Gambar) */}
+          {task.attachments && task.attachments.length > 0 && (
+            <div className="mt-2.5">
+              <button
+                type="button"
+                onClick={() => setShowFilePreview(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-teal-50 to-emerald-50 hover:from-teal-100 hover:to-emerald-100 text-teal-900 text-xs font-bold border border-teal-200 hover:border-teal-300 transition-all cursor-pointer shadow-2xs group"
+                title="Buka pratinjau dokumen PDF atau foto soal tugas asli"
+              >
+                <Eye className="w-3.5 h-3.5 text-teal-600 group-hover:scale-110 transition-transform" />
+                <span>Lihat Berkas Soal ({task.attachments.length} Berkas: PDF / Gambar)</span>
+              </button>
+            </div>
+          )}
+
           {/* Deadline & Realtime Countdown Row */}
           <div className="mt-3 flex items-center justify-between gap-2 flex-wrap text-xs">
             {/* Full Indonesian Deadline */}
@@ -347,10 +378,15 @@ export const TaskCard: React.FC<TaskCardProps> = ({
               )}
 
               {task.attachments?.length > 0 && (
-                <div className="flex items-center gap-1 text-[11px] text-teal-700 font-medium" title={`${task.attachments.length} file lampiran`}>
+                <button
+                  type="button"
+                  onClick={() => setShowFilePreview(true)}
+                  className="flex items-center gap-1 text-[11px] text-teal-700 font-semibold hover:text-teal-900 hover:underline cursor-pointer"
+                  title="Klik untuk membuka pratinjau berkas soal (PDF / Gambar)"
+                >
                   <Paperclip className="w-3.5 h-3.5 text-teal-600" />
-                  <span>{task.attachments.length} berkas</span>
-                </div>
+                  <span>{task.attachments.length} berkas (Lihat)</span>
+                </button>
               )}
             </div>
           )}
@@ -378,6 +414,15 @@ export const TaskCard: React.FC<TaskCardProps> = ({
           )}
         </div>
       </div>
+
+      {/* Modal Pratinjau Dokumen Soal (PDF / Gambar) */}
+      {showFilePreview && (
+        <FilePreviewModal
+          isOpen={showFilePreview}
+          onClose={() => setShowFilePreview(false)}
+          task={task}
+        />
+      )}
     </div>
   );
 };
