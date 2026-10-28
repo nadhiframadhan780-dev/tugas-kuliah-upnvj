@@ -108,12 +108,30 @@ export interface CalendarEvent {
   id: string;
   title: string;
   courseId?: string;
-  type: 'uts' | 'uas' | 'presentasi' | 'seminar' | 'lainnya';
+  type:
+    | 'uts'
+    | 'uas'
+    | 'presentasi'
+    | 'seminar'
+    | 'krs'
+    | 'perkuliahan'
+    | 'minggu_tenang'
+    | 'libur'
+    | 'wisuda'
+    | 'bela_negara'
+    | 'lainnya';
   date: string; // YYYY-MM-DD
-  startTime: string; // HH:mm
-  endTime: string; // HH:mm
-  location: string;
+  endDate?: string; // YYYY-MM-DD untuk rentang periode (mis. 5-9 Okt 2026)
+  startTime?: string; // HH:mm
+  endTime?: string; // HH:mm
+  location?: string;
   notes?: string;
+  semester?: 'ganjil' | 'genap';
+  category?: 'krs' | 'kuliah' | 'ujian' | 'minggu_tenang' | 'libur' | 'wisuda_yudisium' | 'kegiatan_kampus' | 'lainnya';
+  explanation?: string; // Penjelasan mudah dipahami bagi mahasiswa
+  actionAdvice?: string; // Tips & persiapan mahasiswa
+  badgeColor?: string; // HEX atau CSS class warna
+  isOfficialUpnvj?: boolean; // Agenda resmi Kalender Akademik UPNVJ
 }
 
 export interface GradeItem {

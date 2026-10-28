@@ -7,6 +7,7 @@
 
 import { Task, Course, CalendarEvent, GradeItem, PomodoroSession, AppSettings } from '../types';
 import { createUtcTimestamp } from '../utils/time';
+import { OFFICIAL_UPNVJ_ACADEMIC_EVENTS } from '../data/upnvjAcademicCalendar';
 
 const DB_NAME = 'planner_akuntansi_upnvj_db';
 const DB_VERSION = 2;
@@ -244,6 +245,19 @@ export const eventRepository = {
       const req = store.put(event);
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
+    });
+  },
+
+  async saveMany(events: CalendarEvent[]): Promise<void> {
+    const db = await getDatabase();
+    const tx = db.transaction('events', 'readwrite');
+    const store = tx.objectStore('events');
+    for (const e of events) {
+      store.put(e);
+    }
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
     });
   },
 
@@ -730,5 +744,12 @@ export async function initializeDatabaseWithSampleIfEmpty(): Promise<void> {
     await taskRepository.saveMany(sampleTasks);
     const sampleGrades = getSampleGrades();
     await gradeRepository.saveMany(sampleGrades);
+  }
+
+  // Inisialisasi Kalender Akademik Resmi UPNVJ 2026/2027 bila belum ada
+  const existingEvents = await eventRepository.getAll();
+  const hasOfficialEvents = existingEvents.some((e) => e.isOfficialUpnvj || e.id.startsWith('upnvj-'));
+  if (!hasOfficialEvents) {
+    await eventRepository.saveMany(OFFICIAL_UPNVJ_ACADEMIC_EVENTS);
   }
 }
